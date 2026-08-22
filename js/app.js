@@ -481,6 +481,8 @@
   // hint, not a gate.
   function detectDownloadPlatform() {
     const ua = navigator.userAgent;
+    // Android UAs also contain "Linux", so this check must come first.
+    if (/Android/i.test(ua)) return "android";
     if (/Win/i.test(ua)) return "win";
     if (/Mac/i.test(ua)) return "mac";
     if (/Linux|X11/i.test(ua)) return "linux";
