@@ -1628,12 +1628,24 @@ server.listen(PORT, () => {
 // dialog); and electron-updater's own background download runs in the main
 // process after the one-shot NODE_TLS_REJECT_UNAUTHORIZED bypass around
 // checkForUpdates() (see electron/main.js) has already been restored, so it
-// would hit the same wall. This feed is just prebuilt installer bytes, not
-// sensitive data, so serving it over plain HTTP on a second port sidesteps
-// cert trust entirely without weakening TLS anywhere else.
+// would hit the same wall. Serving it over plain HTTP on a second port
+// sidesteps cert trust entirely without weakening TLS anywhere else.
+//
+// This same port also turns out to be the one worth pointing a plain-HTTP
+// tunnel (ngrok, localhost.run, etc.) at, since those terminate TLS
+// themselves and expect a plain-HTTP origin behind them — the self-signed
+// main listener above doesn't fit that. Multiplayer needs the /mp relay to
+// come along for that to actually work, so it gets its own WebSocketServer
+// here rather than only living on the main listener; every connection is
+// handed off into the exact same handler/rooms Map as the main one below,
+// so there's no separate relay logic to keep in sync.
 if (hasCert) {
   const UPDATE_FEED_HTTP_PORT = Number(PORT) + 1;
-  http.createServer(requestHandler).listen(UPDATE_FEED_HTTP_PORT, () => {
+  const updateFeedServer = http.createServer(requestHandler);
+  const updateFeedWss = new WebSocketServer({ server: updateFeedServer, path: "/mp" });
+  updateFeedWss.on("error", () => {});
+  updateFeedWss.on("connection", (ws, req) => wss.emit("connection", ws, req));
+  updateFeedServer.listen(UPDATE_FEED_HTTP_PORT, () => {
     console.log(`Update feed also served over plain HTTP at http://localhost:${UPDATE_FEED_HTTP_PORT}/downloads/updates/`);
   });
 }
