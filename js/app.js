@@ -488,17 +488,14 @@
     if (/Linux|X11/i.test(ua)) return "linux";
     return null;
   }
-  // Electron's BrowserWindow keeps "Electron/x.x.x" in its own user agent by
-  // default (nothing here overrides it) — a reliable way to tell "this page
-  // is running inside the packaged desktop app itself" from "this is a
-  // regular browser tab". Downloading the app from inside the app you
-  // already downloaded doesn't make sense, so this hides the button there
-  // rather than just leaving it dead weight.
-  const runningInElectron = /Electron/i.test(navigator.userAgent);
+  // The menu also offers the Android phone/tablet and TV apps, which are
+  // never redundant regardless of which desktop platform you're already
+  // running — so unlike the desktop installers, it stays visible even
+  // inside the packaged Electron app.
   // The installer binaries live in downloads/ (gitignored — rebuilt per
   // release, never committed), so they simply aren't present in what gets
   // pushed to GitHub Pages. Hide the button rather than link to a 404.
-  if (downloadAppBtn && downloadAppMenu && (runningInElectron || STATIC_MODE)) {
+  if (downloadAppBtn && downloadAppMenu && STATIC_MODE) {
     downloadAppBtn.closest(".download-app-wrap")?.classList.add("hidden");
   } else if (downloadAppBtn && downloadAppMenu) {
     const detected = detectDownloadPlatform();
