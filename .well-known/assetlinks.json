@@ -1,0 +1,18 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "io.github.asherwin86.owenminigames",
+      "sha256_cert_fingerprints": ["32:4B:D5:78:27:94:43:72:9B:DD:F5:89:EF:C5:19:6E:C6:19:BC:A0:75:B0:F9:8E:C8:72:7A:B8:0C:DD:57:8D"]
+    }
+  },
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "io.github.asherwin86.owenminigames.tv",
+      "sha256_cert_fingerprints": ["68:E6:10:83:23:A0:6A:E9:9F:64:A6:6D:71:6C:7F:DF:D1:9A:15:04:09:64:1B:83:D4:BE:75:67:72:DE:51:D9"]
+    }
+  }
+]

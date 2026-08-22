@@ -19,6 +19,11 @@ data/*.json.bak
 # Self-signed dev TLS cert/key — regenerate locally, never share the key
 certs/
 
+# Android app signing keystores — losing these means losing the ability to
+# publish updates to the existing package IDs. Never regenerate casually,
+# never commit. See android-signing/README.md.
+android-signing/
+
 # Editor/tool-local state, not project source
 .vscode/
 .claude/
