@@ -47,7 +47,7 @@ self.addEventListener("fetch", (event) => {
         .catch(() => {
           // offline and never cached — for a page navigation, the shell is
           // still better than a hard connection-error screen
-          if (request.mode === "navigate") return caches.match("/index.html");
+          if (request.mode === "navigate") return caches.match(new URL("index.html", self.registration.scope).href);
           throw new Error("offline and not cached");
         });
     }),

@@ -4,6 +4,7 @@
 // pointer moves, and key presses are forwarded back and replayed on the host.
 // 2P hotseat games become playable across computers; 1P games become co-op.
 (function () {
+  const STATIC_MODE = window.MIMI_STATIC_MODE === true;
   const gameStage = document.getElementById("gameStage");
   const gameView = document.getElementById("gameView");
   const menuView = document.getElementById("menuView");
@@ -82,6 +83,11 @@
   }
 
   function openPanel() {
+    if (STATIC_MODE) {
+      ptStatus.textContent = "This is the static GitHub Pages preview — it has no server to relay a room over, so wireless play isn't available here. Use the full hosted version or the desktop app to play with friends.";
+      ptControls.classList.add("hidden");
+      ptRoomInfo.classList.add("hidden");
+    }
     overlay.classList.remove("hidden");
   }
 

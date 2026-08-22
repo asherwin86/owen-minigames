@@ -1,5 +1,6 @@
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
+const STATIC_MODE = window.MIMI_STATIC_MODE === true;
 
 // object-fit:contain on <canvas> is unreliable across browsers — canvas
 // doesn't consistently expose an intrinsic aspect ratio for it the way
@@ -85,6 +86,13 @@ const mpChat = document.getElementById("mpChat");
 const mpChatLog = document.getElementById("mpChatLog");
 const mpChatForm = document.getElementById("mpChatForm");
 const mpChatInput = document.getElementById("mpChatInput");
+if (STATIC_MODE) {
+    // GitHub Pages has no server to relay a room over — no point offering
+    // controls that can only fail. Solo/local-multiplayer racing is unaffected.
+    if (mpStatus) mpStatus.textContent = "Wireless racing needs the full hosted version — not available on this static GitHub Pages preview. Solo and local multiplayer still work normally.";
+    if (mpControls) mpControls.classList.add("hidden");
+    if (mpMediaTestButton) mpMediaTestButton.classList.add("hidden");
+}
 const localPlayerButtons = document.querySelectorAll("[data-local-players]");
 const localPlayerHint = document.getElementById("localPlayerHint");
 const localRosterSoloRow = document.getElementById("localRosterSoloRow");

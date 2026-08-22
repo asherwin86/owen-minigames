@@ -222,6 +222,14 @@
 
   <footer class="footer">Made for fun · not affiliated with Nintendo</footer>
 
+  <script>
+    // GitHub Pages only serves static files — no server.js, so accounts,
+    // cross-device leaderboards, wireless multiplayer, and private browsing
+    // can't work there. Every game itself is unaffected; only the
+    // backend-dependent features gate off this flag (see js/profiles.js,
+    // js/play-together.js, js/leaderboards.js, js/app.js).
+    window.MIMI_STATIC_MODE = /(^|\.)github\.io$/.test(location.hostname);
+  </script>
   <script src="js/engine.js?v=20260816a"></script>
   <script src="js/hub-audio.js?v=20260802a"></script>
   <script src="js/help-guide.js?v=20260716c"></script>
@@ -334,7 +342,7 @@
     // every load, the browser no-ops if it's already registered and current
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("/sw.js").catch(() => {
+        navigator.serviceWorker.register("sw.js").catch(() => {
           // no secure context (plain http off localhost) or unsupported —
           // the hub works exactly the same either way, just without the
           // install prompt/offline caching

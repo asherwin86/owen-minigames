@@ -4,11 +4,11 @@
 // in from any device on the same network, not just the browser that created
 // the profile. Stored server-side (server.js, data/profiles.json), not a
 // real account system: passwords are hashed before they ever leave the
-// browser, but there's no rate limiting or password recovery. Enough to
-// stop a sibling from messing with your settings, not enough for anything
-// that actually matters.
+// browser. Enough to stop a sibling from messing with your settings, not
+// enough for anything that actually matters.
 (function () {
   const SESSION_KEY = "mimiActiveSession";
+  const STATIC_MODE = window.MIMI_STATIC_MODE === true;
 
   // whitelist of localStorage keys considered "settings" — extend this list
   // as more games grow persisted preferences worth backing up. Deliberately
@@ -260,6 +260,7 @@
   }
 
   async function apiCall(action, body, base) {
+    if (STATIC_MODE) return { ok: false, msg: "This needs the full hosted version — not available on the static GitHub Pages preview." };
     try {
       const res = await fetch(`/api/${base || "profiles"}/${action}`, {
         method: "POST",
@@ -1347,7 +1348,22 @@
     body.appendChild(wrap);
   }
 
+  function renderStaticModeNotice() {
+    body.innerHTML = "";
+    const wrap = document.createElement("div");
+    wrap.className = "profile-form";
+    const heading = document.createElement("h3");
+    heading.textContent = "Accounts aren't available here";
+    const desc = document.createElement("p");
+    desc.className = "profile-status";
+    desc.textContent =
+      "This is the static GitHub Pages preview — it has no server, so sign-in, cross-device settings sync, leaderboards, and wireless multiplayer can't work. All the games themselves still play normally. For accounts and multiplayer, use the full hosted version or the desktop app.";
+    wrap.append(heading, desc);
+    body.appendChild(wrap);
+  }
+
   function renderProfilePanel() {
+    if (STATIC_MODE) return renderStaticModeNotice();
     if (session) renderSignedIn();
     else renderSignedOut();
     renderLocalRosterSection();
@@ -1504,6 +1520,7 @@
       return apiCall("submit", { key: session.key, passwordHash: session.passwordHash, gameId, value, sortDir }, "leaderboards");
     },
     getLeaderboardTop: async (gameId, limit) => {
+      if (STATIC_MODE) return { ok: false, msg: "This needs the full hosted version — not available on the static GitHub Pages preview." };
       try {
         const res = await fetch(`/api/leaderboards/top?gameId=${encodeURIComponent(gameId)}&limit=${limit || 50}`);
         return await res.json();
@@ -1519,6 +1536,7 @@
       return apiCall("publish", { key: session.key, passwordHash: session.passwordHash, base, toppings }, "cakes");
     },
     getCakeFeed: async (limit) => {
+      if (STATIC_MODE) return { ok: false, msg: "This needs the full hosted version — not available on the static GitHub Pages preview." };
       try {
         const res = await fetch(`/api/cakes/list?limit=${limit || 30}`);
         return await res.json();

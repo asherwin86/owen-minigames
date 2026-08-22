@@ -1,4 +1,5 @@
 (function () {
+  const STATIC_MODE = window.MIMI_STATIC_MODE === true;
   const grid = document.getElementById("gameGrid");
   const topbar = document.getElementById("topbar");
   const searchHomeView = document.getElementById("searchHomeView");
@@ -364,6 +365,10 @@
     pageViewUrl.textContent = url;
     pageViewStatus.textContent = "Loading…";
     pageViewStatus.classList.remove("hidden");
+    if (STATIC_MODE) {
+      pageViewStatus.textContent = "Browsing needs the full hosted version — not available on this static GitHub Pages preview.";
+      return;
+    }
     try {
       const resp = await fetch("/api/fetch-page", {
         method: "POST",
@@ -488,7 +493,10 @@
   // already downloaded doesn't make sense, so this hides the button there
   // rather than just leaving it dead weight.
   const runningInElectron = /Electron/i.test(navigator.userAgent);
-  if (downloadAppBtn && downloadAppMenu && runningInElectron) {
+  // The installer binaries live in downloads/ (gitignored — rebuilt per
+  // release, never committed), so they simply aren't present in what gets
+  // pushed to GitHub Pages. Hide the button rather than link to a 404.
+  if (downloadAppBtn && downloadAppMenu && (runningInElectron || STATIC_MODE)) {
     downloadAppBtn.closest(".download-app-wrap")?.classList.add("hidden");
   } else if (downloadAppBtn && downloadAppMenu) {
     const detected = detectDownloadPlatform();

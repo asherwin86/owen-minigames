@@ -8,6 +8,11 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
     <title>Kart Circuit</title>
+    <script>
+      // Loaded same-origin as the hub (iframe/navigation, not cross-origin),
+      // so the same static-hosting check applies — see index.html.
+      window.MIMI_STATIC_MODE = /(^|\.)github\.io$/.test(location.hostname);
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
