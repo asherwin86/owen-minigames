@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: mimi-games
+    runtime: node
+    plan: free
+    buildCommand: npm ci --omit=dev
+    startCommand: node server.js
+    envVars:
+      - key: NODE_VERSION
+        value: 22.14.0
+    # Free tier disk is ephemeral: data/profiles.json, data/leaderboards.json,
+    # and data/cakes.json reset on every deploy and whenever the service wakes
+    # from sleep. server.js already handles a missing data/ dir by creating it
+    # and starting empty (see loadProfilesFromDisk), so this is expected, not
+    # a bug. Add a persistent disk mounted at ./data if accounts need to
+    # survive redeploys.
