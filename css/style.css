@@ -1,0 +1,1362 @@
+/* Palette leans on the two colors most people would actually recognize at a
+   glance — Joy-Con Neon Red and Joy-Con Neon Blue — on a near-black "console
+   dark mode" background instead of the previous purple-tinted one, without
+   using any actual Nintendo logos/artwork (this hub isn't affiliated with
+   Nintendo — see the footer). --accent/--accent2 are the two names every
+   other stylesheet in this project already keys off, so this single swap
+   reaches every button/chip/tile hover treatment already built on them. */
+:root {
+  --bg: #0d0e10;
+  --bg-alt: #17181b;
+  --panel: #1c1d21;
+  --panel-light: #26272c;
+  --accent: #ff3c28;
+  --accent2: #00c3e3;
+  --accent3: #7ee81c;
+  --text: #f1f3f9;
+  --text-dim: #ffffff;
+  --border: #34353b;
+  --win: #35d07f;
+  --lose: #ff5c5c;
+  font-size: 16px;
+}
+/* Themes (js/settings-panel.js): every preset — including a fully custom
+   one built from color pickers — works by setting these same --variables as
+   inline styles on <html>, so nothing here needs a new CSS block per theme.
+   The one thing that IS a class, .theme-light, is a separate on/off switch
+   for "does this theme read as light or dark overall" (each preset carries
+   its own flag for that; custom themes work it out from the background
+   color's own brightness) — a few things aren't variables at all (the
+   animated dark gradient backdrop, the glow blobs, the LED strip on game
+   tiles) and get switched off for any light-toned theme here, since they're
+   a dark-console-shelf effect that reads as noise on a bright background,
+   not something worth re-theming per preset. */
+html.theme-light,
+html.theme-light body {
+  background: var(--bg);
+  animation: none;
+}
+html.theme-light body::before,
+html.theme-light body::after {
+  display: none;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: linear-gradient(120deg, #0a0a0c, #17181b 45%, #131417 75%, #0a0a0c);
+  background-size: 300% 300%;
+  animation: bg-drift 26s ease infinite;
+  color: var(--text);
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+/* body as a flex column so whichever screen (landing/grid/game) is showing
+   just flexes to fill the space under the topbar instead of guessing at a
+   fixed "100vh minus topbar height" — the topbar's real height changes as
+   its buttons wrap, so a hardcoded subtraction was always going to drift out
+   of sync and leave a sliver of avoidable scroll under short/wide windows. */
+body {
+  display: flex;
+  flex-direction: column;
+}
+@keyframes bg-drift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+/* Ambient floating glow blobs behind everything — purely decorative, fixed
+   so they don't affect layout/scroll and never intercept clicks. */
+body::before, body::after {
+  content: "";
+  position: fixed;
+  width: 46vw; height: 46vw;
+  max-width: 560px; max-height: 560px;
+  border-radius: 50%;
+  filter: blur(110px);
+  opacity: .28;
+  z-index: -1;
+  pointer-events: none;
+}
+body::before { background: var(--accent); top: -14vw; left: -12vw; animation: blob-float-a 20s ease-in-out infinite; }
+body::after { background: var(--accent2); bottom: -14vw; right: -12vw; animation: blob-float-b 24s ease-in-out infinite; }
+@keyframes blob-float-a {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(4vw, 5vw) scale(1.12); }
+}
+@keyframes blob-float-b {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-4vw, -5vw) scale(1.1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  html, body, body::before, body::after { animation: none !important; }
+}
+
+.hidden { display: none !important; }
+
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 22px;
+  background: linear-gradient(135deg, rgba(28,29,33,.85), rgba(19,20,23,.85));
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 12px 30px rgba(0,0,0,.35);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+html.theme-light .topbar {
+  background: var(--panel);
+  box-shadow: 0 8px 20px rgba(20,20,30,.08);
+}
+/* the two-tone line is the one unmistakably "Joy-Con" touch — red on the
+   left, blue on the right, like the console flanked by its controllers */
+.topbar::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: -1px;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--accent) 45%, var(--accent2) 55%, var(--accent2));
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  border-radius: 10px;
+  transition: background .15s ease;
+}
+.brand:hover, .brand.pad-hover-target { background: rgba(255,255,255,.06); }
+.brand-icon {
+  font-size: 1.8rem;
+  display: inline-block;
+  animation: brand-float 3.2s ease-in-out infinite;
+}
+@keyframes brand-float {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-4px) rotate(-8deg); }
+}
+.brand h1 {
+  font-size: 1.3rem;
+  margin: 0;
+  letter-spacing: .5px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: brand-shimmer 6s linear infinite;
+}
+@keyframes brand-shimmer {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+.topbar-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+/* On the search-home front page, the taskbar strips down to just Music,
+   Settings, and Profile — no hub branding, no browse controls, no What's
+   New/Play Together — so the page reads like a real search engine's
+   homepage instead of an app's chrome. Everything comes back exactly as
+   it was the moment you step into 51 Mimi Games itself. */
+.topbar.search-mode .brand,
+.topbar.search-mode #updatesBtn,
+.topbar.search-mode #playTogetherBtn,
+.topbar.search-mode .download-app-wrap {
+  display: none;
+}
+
+#search {
+  background: var(--panel-light);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: .9rem;
+  min-width: 180px;
+}
+#search:focus { outline: 2px solid var(--accent2); }
+
+.category-filters { display: flex; gap: 6px; flex-wrap: wrap; }
+.cat-chip {
+  background: var(--panel-light);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: .78rem;
+  cursor: pointer;
+  transition: .15s;
+  white-space: nowrap;
+}
+.cat-chip:hover, .cat-chip.pad-hover-target {
+  color: var(--text);
+  border-color: var(--accent2);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,.35);
+}
+.cat-chip:active { transform: translateY(0) scale(.96); }
+.cat-chip.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+/* Screen 0: a search-engine-style front page shown before anything else —
+   a big centered search bar first, the way a browser's own homepage/new-tab
+   page works, with the hub itself demoted to just one "app" shortcut below
+   it. Room for more app shortcuts to sit alongside it later; for now
+   there's only the one. */
+.search-home-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 48px;
+  padding: 40px 20px;
+  text-align: center;
+  animation: view-fade-in .38s cubic-bezier(.16,1,.3,1) both;
+}
+.search-home-view.hidden { display: none; }
+.search-home-form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  width: 100%;
+}
+.search-home-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(90vw, 560px);
+  padding: 14px 22px;
+  border-radius: 999px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 24px rgba(0,0,0,.18);
+  transition: box-shadow .15s ease, border-color .15s ease;
+}
+.search-home-bar:focus-within {
+  border-color: var(--accent2);
+  box-shadow: 0 10px 30px rgba(0,195,227,.22);
+}
+.search-home-icon { font-size: 1.1rem; opacity: .7; flex-shrink: 0; }
+.search-home-bar input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 1.05rem;
+  outline: none;
+}
+.search-home-bar input::placeholder { color: var(--text-dim); }
+.search-home-actions { display: flex; gap: 10px; justify-content: center; }
+.search-home-apps {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.search-home-apps-label {
+  margin: 0;
+  font-size: .78rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.search-home-apps-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  justify-content: center;
+}
+.search-home-app-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 108px;
+  padding: 18px 12px;
+  border-radius: 20px;
+  cursor: pointer;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+}
+.search-home-app-tile:hover, .search-home-app-tile:focus-visible, .search-home-app-tile.pad-hover-target {
+  transform: translateY(-4px) scale(1.03);
+  border-color: var(--accent);
+  box-shadow: 0 12px 28px rgba(255,60,40,.28);
+  outline: none;
+}
+.search-home-app-tile:active { transform: translateY(-1px) scale(.99); }
+.search-home-app-icon { font-size: 2.1rem; line-height: 1; }
+.search-home-app-label { font-size: .78rem; font-weight: 600; line-height: 1.25; }
+
+/* Screen 1: a mode-picker landing page shown before the game grid, the way
+   a console dashboard asks "what are we doing" before showing you a library
+   — Solo leans Joy-Con red, Multiplayer leans Joy-Con blue, the same two
+   colors as everywhere else in the hub, just given center stage here. */
+.landing-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 34px;
+  padding: 40px 20px;
+  text-align: center;
+  animation: view-fade-in .38s cubic-bezier(.16,1,.3,1) both;
+}
+.landing-view.hidden { display: none; }
+.landing-tagline {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--text-dim);
+  letter-spacing: .02em;
+}
+.landing-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 26px;
+  justify-content: center;
+}
+.landing-mode-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 240px;
+  padding: 34px 22px;
+  border-radius: 28px;
+  cursor: pointer;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+}
+.landing-mode-btn:hover, .landing-mode-btn:focus-visible, .landing-mode-btn.pad-hover-target {
+  transform: translateY(-6px) scale(1.02);
+  outline: none;
+}
+.landing-mode-btn:active { transform: translateY(-2px) scale(.99); }
+.landing-mode-icon { font-size: 3rem; line-height: 1; margin-bottom: 6px; }
+.landing-mode-label { font-size: 1.15rem; font-weight: 700; }
+.landing-mode-desc { font-size: .82rem; color: var(--text-dim); }
+.landing-mode-solo { border-color: rgba(255,60,40,.35); }
+.landing-mode-solo:hover, .landing-mode-solo:focus-visible, .landing-mode-solo.pad-hover-target {
+  border-color: var(--accent);
+  box-shadow: 0 14px 34px rgba(255,60,40,.32);
+}
+.landing-mode-multi { border-color: rgba(0,195,227,.35); }
+.landing-mode-multi:hover, .landing-mode-multi:focus-visible, .landing-mode-multi.pad-hover-target {
+  border-color: var(--accent2);
+  box-shadow: 0 14px 34px rgba(0,195,227,.32);
+}
+.landing-mode-wireless { border-color: rgba(126,232,28,.35); }
+.landing-mode-wireless:hover, .landing-mode-wireless:focus-visible, .landing-mode-wireless.pad-hover-target {
+  border-color: var(--accent3);
+  box-shadow: 0 14px 34px rgba(126,232,28,.32);
+}
+
+/* screen 1's utility row (Music/Settings/What's New/Profile/Admin) stays in
+   the topbar always; only the browse-specific controls (search, category
+   filters, Surprise Me) are screen-2-only, hidden until you're in the grid */
+.browse-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.browse-controls.hidden { display: none; }
+
+.menu-view { flex: 1; padding: 20px; width: 100%; }
+.menu-view, .game-view {
+  animation: view-fade-in .38s cubic-bezier(.16,1,.3,1) both;
+}
+@keyframes view-fade-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Flexbox, not grid: with 71 games and 8-ish columns the last row is
+   partial, and a grid reserves that row's leftover track as empty space —
+   flex has no such phantom track, and flex-grow lets that last row's own
+   tiles stretch to fill the gap instead of leaving black space next to
+   them. */
+.grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.game-tile {
+  /* rounder, boxier "app icon on a shelf" shape instead of the previous
+     subtler card radius — closer to how a game's icon actually reads on the
+     Switch's own dark-mode home menu */
+  flex: 1 1 150px;
+  max-width: 230px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 18px 10px;
+  text-align: center;
+  cursor: pointer;
+  /* .game-tile is a <button> — buttons don't inherit page text color from
+     the UA stylesheet the way a <div> would, they get their own default
+     (usually black). .tile-title never set its own color either, banking on
+     inheritance that was never actually happening, so it silently rendered
+     as black-on-dark this whole time regardless of any --text-dim tweak. */
+  color: var(--text);
+  transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+  isolation: isolate;
+  opacity: 0;
+  animation: tile-in .4s cubic-bezier(.16,1,.3,1) both;
+  animation-delay: calc(var(--i, 0) * 16ms);
+}
+@keyframes tile-in {
+  from { opacity: 0; transform: translateY(14px) scale(.94); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.game-tile::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: conic-gradient(from 0deg, var(--accent2), var(--accent), var(--accent2));
+  opacity: 0;
+  z-index: -1;
+  transition: opacity .25s ease;
+  animation: tile-spin 4s linear infinite;
+}
+.game-tile:hover::before, .game-tile:focus-visible::before, .game-tile.pad-hover-target::before { opacity: .6; }
+@keyframes tile-spin { to { transform: rotate(360deg); } }
+/* A thin LED strip that traces the entire outline of every tile, like a
+   lit-up edge on a game case — a slow red-to-blue shimmer at rest,
+   brightening into a real glow on hover. Built with the standard
+   gradient-border trick (real border, two backgrounds, masked down to just
+   the border ring) rather than the tile's actual border, so it can be a
+   moving gradient without disturbing --border underneath. A pseudo-element
+   (not a real DOM node) so it applies to every tile automatically. */
+.game-tile::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 2px solid transparent;
+  background: linear-gradient(90deg, var(--accent), var(--accent2), var(--accent)) border-box;
+  background-size: 200% 100%;
+  -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: .6;
+  filter: drop-shadow(0 0 4px rgba(255,60,40,.4)) drop-shadow(0 0 4px rgba(0,195,227,.4));
+  animation: led-shimmer 3.2s linear infinite;
+  transition: opacity .2s ease, filter .2s ease;
+  pointer-events: none;
+}
+@keyframes led-shimmer {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+.game-tile:hover::after, .game-tile:focus-visible::after, .game-tile.pad-hover-target::after {
+  opacity: 1;
+  filter: drop-shadow(0 0 7px rgba(255,60,40,.65)) drop-shadow(0 0 7px rgba(0,195,227,.65));
+}
+@media (prefers-reduced-motion: reduce) {
+  .game-tile::after { animation: none; }
+}
+/* The LED strip is a dark-console-shelf effect — it doesn't read as
+   anything but visual noise on a plain white background, so the white
+   theme drops it entirely instead of just recoloring it. */
+html.theme-light .game-tile::after {
+  display: none;
+}
+.game-tile:hover, .game-tile:focus-visible, .game-tile.pad-hover-target {
+  transform: translateY(-4px) scale(1.015);
+  border-color: var(--accent2);
+  box-shadow: 0 8px 22px rgba(0,0,0,.4);
+  outline: none;
+}
+.game-tile:active { transform: translateY(-1px) scale(.98); }
+.game-tile .tile-emoji { font-size: 2.4rem; line-height: 1; transition: transform .15s ease; }
+.game-tile:hover .tile-emoji, .game-tile:focus-visible .tile-emoji, .game-tile.pad-hover-target .tile-emoji { transform: scale(1.15) rotate(-4deg); }
+.game-tile .tile-title { font-size: .85rem; font-weight: 600; }
+.game-tile .tile-meta { font-size: .68rem; color: var(--text-dim); }
+.game-tile .tile-num {
+  position: absolute; top: 6px; left: 8px;
+  font-size: .65rem; color: var(--text-dim);
+  background: var(--panel-light); border-radius: 6px; padding: 1px 6px;
+}
+.tile-fav {
+  position: absolute; top: 4px; right: 6px;
+  font-size: 1.05rem; line-height: 1; padding: 3px 5px;
+  color: var(--text-dim);
+  cursor: pointer;
+  border-radius: 8px;
+  transition: transform .12s ease, color .12s ease;
+}
+.tile-fav:hover, .tile-fav.pad-hover-target { transform: scale(1.25); color: #ffd166; }
+.tile-fav:focus-visible { outline: 2px solid var(--accent2); }
+.tile-fav.is-fav { color: #ffd166; }
+.tile-fav.pop { animation: fav-pop .38s ease; }
+@keyframes fav-pop {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.55) rotate(18deg); }
+  100% { transform: scale(1); }
+}
+
+.section-heading {
+  font-size: .8rem;
+  margin: 0 0 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  font-weight: 700;
+}
+.continue-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.continue-heading-row .section-heading { margin: 0 0 10px; }
+.continue-clear-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: .72rem;
+  cursor: pointer;
+  padding: 2px 6px;
+  margin-bottom: 10px;
+  border-radius: 6px;
+  transition: color .15s ease, background .15s ease;
+}
+.continue-clear-btn:hover, .continue-clear-btn.pad-hover-target { color: var(--accent); background: rgba(255,71,87,.1); }
+.continue-playing { margin-bottom: 22px; }
+.continue-row {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+.continue-tile {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 8px 18px 8px 12px;
+  cursor: pointer;
+  color: var(--text);
+  transition: transform .12s ease, border-color .12s ease, box-shadow .12s ease;
+  white-space: nowrap;
+  opacity: 0;
+  animation: tile-in .4s cubic-bezier(.16,1,.3,1) both;
+  animation-delay: calc(var(--i, 0) * 30ms);
+}
+.continue-tile:hover, .continue-tile:focus-visible, .continue-tile.pad-hover-target {
+  transform: translateY(-2px);
+  border-color: var(--accent2);
+  box-shadow: 0 6px 16px rgba(0,0,0,.35);
+  outline: none;
+}
+.continue-tile .tile-emoji { font-size: 1.35rem; }
+.continue-tile .tile-title { font-size: .82rem; font-weight: 600; }
+.continue-tile--last {
+  border-color: var(--accent);
+  background: linear-gradient(135deg, var(--panel-light), var(--panel));
+  animation: tile-in .4s cubic-bezier(.16,1,.3,1) both, pulse-glow 2.4s ease-in-out .4s infinite;
+}
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255,71,87,.45); }
+  50% { box-shadow: 0 0 0 7px rgba(255,71,87,0); }
+}
+.continue-tile-text { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; }
+.continue-tile-label {
+  font-size: .62rem;
+  color: var(--accent2);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  font-weight: 700;
+}
+
+.game-view { flex: 1; padding: 14px 22px 20px; max-width: 1000px; margin: 0 auto; width: 100%; }
+
+.game-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.back-btn {
+  background: var(--panel-light);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 8px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: .85rem;
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+}
+.back-btn:hover, .back-btn.pad-hover-target {
+  border-color: var(--accent2);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px rgba(0,0,0,.35);
+}
+.back-btn:active { transform: translateY(0) scale(.97); }
+#gameTitle { margin: 0; font-size: 1.3rem; flex: 1; }
+.game-status { font-size: .9rem; color: var(--accent2); font-weight: 600; min-height: 1.2em; }
+
+.game-stage {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 12px;
+  min-height: 360px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  position: relative;
+  user-select: none;
+}
+/* Every canvas-based game sets its own max-width:100% so it never overflows
+   sideways, but none of them cap the height — a canvas with a tall intrinsic
+   resolution (Bike Rush, Coast Guard, Asteroids, etc.) just renders at full
+   size and pushes everything below it off the bottom of the screen. Capping
+   height too (with width auto) makes the browser "contain" it into whichever
+   dimension is tighter, same aspect ratio either way. A game that sets its
+   own inline max-height (Pinball) keeps that instead, inline always wins.
+   Sized to read close to how big Kart Circuit already looks by default
+   (not just in its own Fullscreen mode) — a game screen is the whole point
+   of opening a game, so it should dominate the view instead of sitting in a
+   small box. Some scroll on shorter windows is an acceptable trade for that,
+   the same call already made for Kart Circuit and Pinball. */
+.game-stage canvas {
+  max-height: min(70vh, 680px);
+  height: auto;
+}
+
+/* Kart Circuit needs a lot more room than the other, mostly grid-sized mini-games. */
+.game-view.wide-stage {
+  max-width: none;
+  padding-left: 1.2vw;
+  padding-right: 1.2vw;
+}
+/* Kart Circuit already sizes its own canvas in JS to fit this wide stage
+   exactly (see resizeCanvas() in its game.js) — the blanket height cap above
+   would just fight that and leave a mismatched gap, so it's opted out here. */
+.game-view.wide-stage .game-stage canvas {
+  max-height: none;
+}
+.game-view.wide-stage .game-stage {
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* Collapsed by default: this is the same info the "How to Play" button's
+   animated guide already covers, and leaving it permanently expanded was
+   one of the biggest reasons a game plus its chrome didn't fit in one
+   screen — most people never read it a second time. */
+.how-to-play {
+  margin-top: 12px;
+  font-size: .82rem;
+  color: var(--text-dim);
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 4px 14px;
+}
+.how-to-play summary {
+  padding: 8px 0;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text);
+  list-style: none;
+}
+.how-to-play summary::-webkit-details-marker { display: none; }
+.how-to-play summary::before { content: "▸ "; color: var(--accent2); }
+.how-to-play[open] summary::before { content: "▾ "; }
+.how-to-play summary:hover, .how-to-play summary.pad-hover-target { color: var(--accent2); }
+.how-to-play p { margin: 0 0 10px; }
+
+.page-view-overlay {
+  position: fixed; inset: 0;
+  background: var(--bg);
+  z-index: 110;
+  display: flex;
+  flex-direction: column;
+}
+.page-view-bar {
+  display: flex; align-items: center; gap: 14px;
+  padding: 10px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.page-view-url {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-dim);
+  font-size: 0.92em;
+  background: color-mix(in srgb, var(--bg) 60%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 7px 16px;
+}
+.page-view-body {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+.page-view-status {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-dim);
+  font-size: 1.05em;
+  padding: 20px;
+  text-align: center;
+}
+.page-view-frame {
+  width: 100%; height: 100%;
+  border: none;
+  background: #fff;
+}
+
+.overlay {
+  position: fixed; inset: 0;
+  background: rgba(5,6,15,.72);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100;
+}
+.overlay-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 28px 34px;
+  text-align: center;
+  min-width: 280px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.5);
+}
+.overlay-card h2 { margin: 0 0 8px; color: var(--accent2); }
+.overlay-card p { color: var(--text-dim); margin: 0 0 18px; }
+.overlay-card button {
+  background: var(--accent);
+  color: white;
+  border: none;
+  padding: 10px 22px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: .95rem;
+  font-weight: 600;
+  transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
+}
+.overlay-card button:hover, .overlay-card button.pad-hover-target {
+  transform: translateY(-2px) scale(1.03);
+  box-shadow: 0 10px 24px rgba(255,71,87,.45);
+  filter: brightness(1.08);
+}
+.overlay-card button:active { transform: translateY(0) scale(.97); }
+
+.footer {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: .75rem;
+  padding: 20px;
+}
+
+/* Generic helpers reused across games */
+.btn {
+  background: var(--panel-light);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 8px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: .85rem;
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease, filter .15s ease;
+}
+.btn:hover:not(:disabled), .btn.pad-hover-target:not(:disabled) {
+  border-color: var(--accent2);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px rgba(0,0,0,.35);
+}
+.btn:active:not(:disabled) { transform: translateY(0) scale(.97); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: white; }
+.btn.primary:hover:not(:disabled), .btn.primary.pad-hover-target:not(:disabled) { filter: brightness(1.1); }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+
+.cell-grid { display: grid; gap: 4px; }
+.playing-card {
+  width: 60px; height: 84px;
+  background: white; color: #111;
+  border-radius: 8px;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  font-weight: 700; font-size: 1.1rem;
+  box-shadow: 0 2px 6px rgba(0,0,0,.4);
+  cursor: pointer;
+  border: 1px solid #ccc;
+  user-select: none;
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+.playing-card:hover:not(.disabled), .playing-card.pad-hover-target:not(.disabled) {
+  transform: translateY(-6px);
+  box-shadow: 0 8px 16px rgba(0,0,0,.5);
+}
+.playing-card:active:not(.disabled) { transform: translateY(-2px); }
+.playing-card.red { color: #d3202f; }
+.playing-card.back {
+  background: repeating-linear-gradient(45deg, var(--accent2), var(--accent2) 6px, #0d3a52 6px, #0d3a52 12px);
+  color: transparent;
+}
+.playing-card.disabled { opacity: .5; cursor: default; }
+
+@media (max-width: 600px) {
+  .game-tile { flex-basis: 120px; }
+  .game-tile .tile-emoji { font-size: 2rem; }
+}
+
+/* Animated "how to play" guide */
+.help-btn { font-size: .8rem; padding: 7px 14px; white-space: nowrap; }
+
+.help-overlay {
+  position: fixed; inset: 0;
+  background: rgba(5,6,15,.78);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 200;
+  padding: 20px;
+}
+.help-card {
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 28px;
+  width: min(460px, 100%);
+  box-shadow: 0 24px 70px rgba(0,0,0,.55);
+  animation: help-card-in .18s ease;
+}
+@keyframes help-card-in {
+  from { opacity: 0; transform: translateY(10px) scale(.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.help-close {
+  position: absolute; top: 14px; right: 14px;
+  background: var(--panel-light);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  width: 30px; height: 30px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: .85rem;
+  transition: transform .15s ease, color .15s ease, border-color .15s ease;
+}
+.help-close:hover, .help-close.pad-hover-target { color: var(--text); border-color: var(--accent2); transform: rotate(90deg); }
+
+.help-header { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+.help-emoji { font-size: 2.2rem; line-height: 1; }
+.help-header h2 { margin: 0; font-size: 1.15rem; }
+.help-meta { margin: 2px 0 0; font-size: .78rem; color: var(--text-dim); }
+
+.help-stage {
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  height: 150px;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+  position: relative;
+}
+.help-caption {
+  margin: 14px 0 0;
+  font-size: .88rem;
+  color: var(--text);
+  line-height: 1.5;
+  min-height: 2.6em;
+}
+.help-footer {
+  margin-top: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.help-nav { font-size: .8rem; padding: 7px 14px; }
+.help-dots { display: flex; gap: 6px; }
+.help-dot {
+  width: 8px; height: 8px;
+  border-radius: 999px;
+  border: none;
+  background: var(--border);
+  cursor: pointer;
+  padding: 0;
+  transition: transform .15s ease, background .15s ease;
+}
+.help-dot:hover, .help-dot.pad-hover-target { transform: scale(1.3); }
+.help-dot.active { background: var(--accent2); transform: scale(1.3); }
+
+/* Update Center */
+.updates-btn { position: relative; font-size: .8rem; padding: 7px 14px; white-space: nowrap; }
+.updates-badge {
+  position: absolute;
+  top: -4px; right: -4px;
+  width: 10px; height: 10px;
+  border-radius: 999px;
+  background: var(--lose, #ff5d5d);
+  box-shadow: 0 0 0 2px var(--panel);
+  animation: updates-badge-pulse 1.6s ease-in-out infinite;
+}
+.updates-badge.hidden { display: none; }
+@keyframes updates-badge-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.35); opacity: .7; }
+}
+
+/* Download App: a real file download (Downloads folder → run it yourself),
+   not the browser's own PWA install prompt — a separate, deliberate choice
+   surfaced right in the taskbar rather than left for people to discover in
+   the browser chrome. */
+.download-app-wrap { position: relative; }
+.download-app-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 60;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 8px;
+  min-width: 200px;
+  box-shadow: 0 20px 50px rgba(0,0,0,.5);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.download-app-menu.hidden { display: none; }
+.download-app-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  color: var(--text);
+  text-decoration: none;
+  font-size: .88rem;
+}
+.download-app-option:hover, .download-app-option.pad-hover-target {
+  background: var(--panel-light);
+}
+.download-app-option.is-detected {
+  border: 1px solid var(--accent2);
+  background: color-mix(in srgb, var(--accent2) 12%, transparent);
+}
+.download-app-icon { font-size: 1.2rem; }
+.download-app-label { display: flex; flex-direction: column; line-height: 1.25; }
+.download-app-label small { color: var(--text-dim); font-size: .74rem; }
+
+.updates-overlay {
+  position: fixed; inset: 0;
+  background: rgba(5,6,15,.78);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 200;
+  padding: 20px;
+}
+.updates-card {
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 28px;
+  width: min(520px, 100%);
+  max-height: min(640px, 86vh);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 70px rgba(0,0,0,.55);
+  animation: help-card-in .18s ease;
+}
+.updates-header { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; flex-shrink: 0; }
+.updates-emoji { font-size: 2.2rem; line-height: 1; }
+.updates-header h2 { margin: 0; font-size: 1.15rem; }
+
+.updates-list {
+  overflow-y: auto;
+  padding-right: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.updates-date {
+  margin: 0 0 10px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  font-size: .72rem;
+  color: var(--text-dim);
+}
+.update-entry {
+  display: flex;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--panel-light);
+  border: 1px solid var(--border);
+  margin-bottom: 10px;
+}
+.update-entry-emoji { font-size: 1.3rem; line-height: 1.4; flex-shrink: 0; }
+.update-entry-title { margin: 0 0 3px; font-size: .92rem; font-weight: 600; color: var(--text); }
+.update-entry-time {
+  margin-left: 8px;
+  font-size: .7rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.update-entry-desc { margin: 0; font-size: .82rem; color: var(--text-dim); line-height: 1.45; }
+
+.text-prompt-overlay { z-index: 400; }
+.text-prompt-card { width: min(380px, 100%); gap: 12px; }
+.text-prompt-message { margin: 0; font-size: .88rem; color: var(--text); }
+.text-prompt-card input {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-alt);
+  color: var(--text);
+  font: inherit;
+  font-size: .85rem;
+}
+.text-prompt-card input:focus { outline: none; border-color: var(--accent2); }
+
+/* Profiles */
+.profile-btn { font-size: .8rem; padding: 7px 14px; white-space: nowrap; }
+.profile-form { display: flex; flex-direction: column; gap: 10px; }
+.profile-form input[type="text"], .profile-form input[type="password"], .profile-delete-row input {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-alt);
+  color: var(--text);
+  font: inherit;
+  font-size: .85rem;
+}
+.profile-form input:focus, .profile-delete-row input:focus { outline: none; border-color: var(--accent2); }
+.profile-check { display: flex; align-items: center; gap: 8px; font-size: .8rem; color: var(--text-dim); line-height: 1.4; }
+.profile-form-actions, .profile-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.profile-chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 2px; }
+.profile-chip {
+  background: var(--panel-light); border: 1px solid var(--border); border-radius: 999px;
+  padding: 5px 12px; font-size: .78rem; cursor: pointer; color: var(--text);
+}
+.profile-chip:hover, .profile-chip.pad-hover-target { border-color: var(--accent2); }
+.profile-chip.is-selected { background: var(--accent2); border-color: var(--accent2); color: #04121a; font-weight: 700; }
+.profile-status { margin: 0; font-size: .82rem; min-height: 1.3em; color: var(--text-dim); }
+.profile-status.error { color: #ff5d5d; }
+.profile-status.ok { color: #7cfc9a; }
+.profile-signed-in { display: flex; flex-direction: column; gap: 12px; }
+.profile-identity-row { display: flex; align-items: center; gap: 12px; }
+.profile-avatar {
+  width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0;
+  background-color: var(--panel-light); background-size: cover; background-position: center;
+  border: 2px solid var(--border); display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 1.05rem; color: var(--text-dim);
+}
+.profile-name-line { margin: 0; font-size: 1.05rem; font-weight: 600; }
+.profile-dev-badge {
+  display: inline-block; margin-left: 8px; padding: 2px 9px; border-radius: 999px;
+  background: rgba(255, 209, 102, .18); border: 1px solid rgba(255, 209, 102, .5);
+  color: #ffd166; font-size: .68rem; letter-spacing: .04em; vertical-align: middle;
+}
+.profile-delete-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.profile-note { margin: 0; font-size: .74rem; color: var(--text-dim); line-height: 1.5; }
+.profile-link-btn {
+  background: none; border: none; padding: 0; margin: 2px 0;
+  color: var(--accent2); font-size: .78rem; text-decoration: underline;
+  cursor: pointer; text-align: left; align-self: flex-start;
+}
+.profile-link-btn:hover, .profile-link-btn.pad-hover-target { color: var(--accent); }
+.profile-security-section { border: 1px solid var(--border); border-radius: 10px; padding: 10px; margin-top: 4px; }
+.profile-passkey-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 0; font-size: .82rem; }
+.profile-recovery-code { font-family: monospace; font-size: 1.05rem; letter-spacing: .04em; background: var(--bg-alt); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; display: inline-block; margin: 6px 0; user-select: all; }
+
+/* Play Together (wireless) + Local Party */
+.pt-status { margin: 0 0 14px; font-size: .85rem; color: var(--text-dim); line-height: 1.5; }
+.pt-controls { display: flex; flex-wrap: wrap; gap: 10px; }
+.pt-controls.hidden, .pt-room-info.hidden { display: none; }
+.pt-controls input {
+  flex: 1;
+  min-width: 90px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-alt);
+  color: var(--text);
+  font: inherit;
+  font-size: .85rem;
+}
+.pt-controls input:focus { outline: none; border-color: var(--accent2); }
+.pt-room-info p { margin: 0 0 8px; }
+.pt-room-info strong { color: var(--accent2); font-size: 1.1rem; letter-spacing: .12em; }
+.pt-divider { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 16px; }
+
+.party-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 8px 14px;
+  margin-bottom: 12px;
+}
+.party-bar.hidden { display: none; }
+.party-hint { font-size: .8rem; color: var(--text-dim); margin-right: auto; }
+.party-chip {
+  background: var(--panel-light);
+  color: var(--text);
+  border: 1px solid var(--chip-color, var(--border));
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: .82rem;
+  cursor: pointer;
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+.party-chip b { color: var(--chip-color, var(--accent2)); margin-left: 4px; }
+.party-chip:hover, .party-chip.pad-hover-target { transform: translateY(-2px); box-shadow: 0 6px 14px rgba(0,0,0,.35); }
+.party-chip.turn { box-shadow: 0 0 0 2px var(--chip-color), 0 6px 14px rgba(0,0,0,.3); }
+.party-action { font-size: .78rem; padding: 6px 12px; }
+
+/* Gamepad cursor */
+.pad-cursor {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 300;
+  pointer-events: none;
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.5));
+}
+.pad-cursor.hidden { display: none; }
+.pad-cursor.clicking svg { transform: scale(0.78); transform-origin: 20% 15%; }
+
+/* Synthetic pointer events from the gamepad cursor can never trigger real
+   CSS :hover — no browser allows it, faked or not — so pad-cursor.js toggles
+   this class by hand instead. Every component with its own purpose-built
+   :hover treatment above also lists .pad-hover-target alongside it (e.g.
+   .game-tile:hover, .game-tile.pad-hover-target { ... }) so a controller
+   sees the exact same animation a real mouse would. This generic outline is
+   only the fallback for anything that doesn't have one of those — no
+   !important, so it never fights a component's own richer styling above
+   (lower specificity always loses to e.g. .game-tile.pad-hover-target). */
+.pad-hover-target {
+  outline: 3px solid var(--accent2);
+  outline-offset: 2px;
+}
+
+/* Generic reusable animated "move" primitives */
+.hg-stage { width: 100%; height: 100%; position: relative; display: flex; align-items: center; justify-content: center; }
+
+.hg-objective .hg-trophy, .hg-goal .hg-flag {
+  font-size: 3.4rem;
+  animation: hg-bounce 1.8s ease-in-out infinite;
+  filter: drop-shadow(0 6px 14px rgba(0,210,255,.35));
+}
+@keyframes hg-bounce {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-12px) scale(1.06); }
+}
+
+.hg-click { gap: 0; }
+.hg-target {
+  position: absolute;
+  width: 46px; height: 46px;
+  border-radius: 10px;
+  border: 2px solid var(--accent2);
+  background: rgba(0,210,255,.08);
+}
+.hg-ripple {
+  position: absolute;
+  width: 46px; height: 46px;
+  border-radius: 10px;
+  border: 2px solid var(--accent2);
+  animation: hg-ripple 1.8s ease-out infinite;
+}
+@keyframes hg-ripple {
+  0% { transform: scale(1); opacity: .8; }
+  70% { transform: scale(1.6); opacity: 0; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+.hg-cursor {
+  position: absolute;
+  font-size: 1.6rem;
+  animation: hg-cursor-move 1.8s ease-in-out infinite;
+  filter: drop-shadow(0 4px 6px rgba(0,0,0,.5));
+}
+@keyframes hg-cursor-move {
+  0% { transform: translate(-70px, 50px) scale(1); }
+  55% { transform: translate(0, 0) scale(.9); }
+  70% { transform: translate(0, 0) scale(.75); }
+  100% { transform: translate(-70px, 50px) scale(1); }
+}
+
+.hg-keys { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.hg-key-row { display: flex; gap: 10px; }
+.hg-key {
+  width: 42px; height: 42px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel-light);
+  color: var(--text-dim);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.1rem;
+  animation: hg-key-pulse 2.4s ease-in-out infinite;
+}
+.hg-key-up { animation-delay: 0s; }
+.hg-key-left { animation-delay: .6s; }
+.hg-key-down { animation-delay: 1.2s; }
+.hg-key-right { animation-delay: 1.8s; }
+@keyframes hg-key-pulse {
+  0%, 15%, 100% { transform: scale(1); border-color: var(--border); color: var(--text-dim); box-shadow: none; }
+  5% { transform: scale(1.18); border-color: var(--accent2); color: var(--text); box-shadow: 0 0 16px rgba(0,210,255,.5); }
+}
+
+.hg-drag { width: 100%; }
+.hg-drag-track {
+  position: absolute;
+  left: 20%; right: 20%;
+  height: 2px;
+  background: var(--border);
+  top: 50%;
+}
+.hg-drag-item {
+  position: absolute;
+  font-size: 2rem;
+  animation: hg-drag-move 2.4s ease-in-out infinite;
+}
+@keyframes hg-drag-move {
+  0%, 8% { left: 20%; transform: translate(-50%, -50%) rotate(0deg); }
+  50%, 58% { left: 80%; transform: translate(-50%, -50%) rotate(8deg); }
+  100% { left: 20%; transform: translate(-50%, -50%) rotate(0deg); }
+}
+
+.hg-type-box {
+  background: var(--panel-light);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-family: monospace;
+  font-size: 1.2rem;
+  color: var(--text);
+  min-width: 120px;
+  text-align: left;
+}
+.hg-type-text {
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+  width: 0;
+  animation: hg-type-out 2.6s steps(4) infinite;
+}
+@keyframes hg-type-out {
+  0% { width: 0; }
+  40% { width: 4ch; }
+  85% { width: 4ch; }
+  100% { width: 0; }
+}
+.hg-caret { animation: hg-caret-blink .8s step-end infinite; color: var(--accent2); }
+@keyframes hg-caret-blink { 50% { opacity: 0; } }
+
+/* Canvas-based games (Gun Game Arena, Coast Guard, Bike Rush, and others)
+   wrap their <canvas> in a div with this class before requesting fullscreen
+   on it. The Fullscreen API only makes the WRAPPER fill the screen — without
+   these rules the canvas inside just sits at its normal small size in a
+   corner of an otherwise empty black fullscreen backdrop, which looks
+   completely broken. The canvas itself is deliberately NOT sized here:
+   max-width/max-height alone only cap size, they never make a canvas grow
+   past its intrinsic pixel dimensions — the actual scaled-up width/height is
+   computed and set inline by JS (resizeCanvasForFullscreen in each game) so
+   it can preserve aspect ratio.
+   Targeting :fullscreen directly in the stylesheet turned out unreliable:
+   in one real-world test (Firefox), the element genuinely matched
+   `:fullscreen` (confirmed via element.matches()) yet rules written against
+   that pseudo-class in an external stylesheet simply never took effect —
+   not even unrelated properties like background-color. Whatever the engine
+   quirk, the canvas ended up pinned to the top-left corner of an otherwise
+   black screen — "squashed in the corner." Each game's JS already toggles a
+   plain `.is-fullscreen` class on this element in lockstep with fullscreen
+   state (see resizeCanvasForFullscreen), so styling keys off that instead —
+   an ordinary class selector doesn't have any of :fullscreen's baggage. */
+.mimi-fullscreen-stage.is-fullscreen {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  position: relative;
+  background: #000;
+}
+/* The viewport-relative canvas height cap (added so games fit on screen
+   without scrolling) is exactly wrong once a canvas is actually filling a
+   real fullscreen window — it clamped every fullscreen game down to a thin
+   letterboxed strip instead of the full screen JS had just sized it to.
+   Absolute-position-and-transform centering doesn't depend on the parent
+   being flex (or any particular display mode), unlike the old approach. */
+.mimi-fullscreen-stage.is-fullscreen canvas {
+  max-height: none;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* Shared "Dev Cheats" panel (see ctx.devCheatPanel in js/engine.js) — every
+   game that opts in gets the same look, anchored to its own gameStage
+   (already position:relative, set in app.js) rather than the viewport, so
+   it scrolls/clears with the game instead of floating over the whole hub. */
+.mimi-dev-cheat-panel {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(8, 10, 20, 0.85);
+  border: 1px solid rgba(255, 209, 102, 0.35);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+  max-width: 200px;
+}
+.mimi-dev-cheat-title {
+  margin: 0 0 2px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #ffd166;
+  white-space: nowrap;
+}
+.mimi-dev-cheat-panel button {
+  font-size: 0.82rem;
+  padding: 6px 10px;
+}

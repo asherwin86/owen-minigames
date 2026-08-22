@@ -1,0 +1,25 @@
+{
+  "appId": "com.mimigames.hub.vrsim",
+  "productName": "51 Mimi Games VR Simulator",
+  "asar": false,
+  "directories": {
+    "output": "dist-electron-vrsim"
+  },
+  "files": [
+    "index.html",
+    "css/**/*",
+    "js/**/*",
+    "games/**/*",
+    "server.js",
+    "electron/main-vrsim.js",
+    "electron/vrsim-extension/**/*",
+    "package.json",
+    "!**/*.md"
+  ],
+  "extraMetadata": {
+    "main": "electron/main-vrsim.js"
+  },
+  "win": {
+    "icon": "electron/build/icon.png"
+  }
+}

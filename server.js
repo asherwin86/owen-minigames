@@ -1,0 +1,1639 @@
+const http = require("http");
+const https = require("https");
+const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
+const dns = require("dns");
+const net = require("net");
+const { WebSocketServer } = require("ws");
+// This Node version's built-in `globalThis.crypto` is (oddly) the classic
+// Node `crypto` module itself, not a WebCrypto-compliant object — it has no
+// getRandomValues(), which @simplewebauthn/server requires. Point it at the
+// real WebCrypto implementation Node already ships (crypto.webcrypto)
+// instead of the wrong thing that was already sitting there.
+globalThis.crypto = crypto.webcrypto;
+const {
+  generateRegistrationOptions,
+  verifyRegistrationResponse,
+  generateAuthenticationOptions,
+  verifyAuthenticationResponse,
+} = require("@simplewebauthn/server");
+
+const PORT = process.env.PORT || 1764;
+const ROOT = __dirname;
+const ROOM_MAX_PLAYERS = 20; // Gun Game Arena supports team sizes up to 10v10
+const ROOM_TTL_MS = 4 * 60 * 60 * 1000;
+
+// Voice chat (getUserMedia) only works in "secure contexts" — HTTPS, or plain
+// http://localhost. Since this server is reached over the LAN by IP, that means
+// a real TLS listener (with a self-signed cert) rather than plain HTTP.
+const CERT_PATH = path.join(ROOT, "certs", "cert.pem");
+const KEY_PATH = path.join(ROOT, "certs", "key.pem");
+const hasCert = fs.existsSync(CERT_PATH) && fs.existsSync(KEY_PATH);
+// If you want to run this server on a LAN with voice chat, generate a self-signed cert and key with:
+//   openssl req -x509 -newkey rsa:4096 -keyout certs/key.pem -out certs/cert.pem -days 365 -nodes
+// Then accept the self-signed cert in your browser when you first connect to it.
+// (The cert is only used for the WebRTC voice chat; the rest of the game works fine over plain HTTP.)
+const MIME = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".ico": "image/x-icon",
+  ".webmanifest": "application/manifest+json; charset=utf-8",
+  ".zip": "application/zip",
+};
+// --- Static file serving for the client-side app (HTML, JS, CSS, images, etc.) 
+function serveStatic(req, res) {
+  const urlPath = decodeURIComponent(req.url.split("?")[0]);
+  // /data holds profiles.json — never let it be served as a static file
+  if (urlPath === "/data" || urlPath.startsWith("/data/")) {
+    res.writeHead(403);
+    res.end("Forbidden");
+    return;
+  }
+  let filePath = path.join(ROOT, urlPath === "/" ? "/index.html" : urlPath);
+  if (!filePath.startsWith(ROOT)) {
+    res.writeHead(403);
+    res.end("Forbidden");
+    return;
+  }
+  fs.stat(filePath, (err, stat) => {
+    if (err || !stat.isFile()) {
+      res.writeHead(404);
+      res.end("Not found");
+      return;
+    }
+    const ext = path.extname(filePath).toLowerCase();
+    const headers = {
+      "Content-Type": MIME[ext] || "application/octet-stream",
+      "Cache-Control": "no-store",
+    };
+    // /downloads holds the packaged desktop app builds — force a real
+    // Save-to-Downloads instead of the browser trying to navigate to/open
+    // a multi-hundred-MB binary inline
+    if (urlPath.startsWith("/downloads/")) {
+      headers["Content-Disposition"] = `attachment; filename="${path.basename(filePath)}"`;
+      headers["Content-Length"] = stat.size;
+    }
+    res.writeHead(200, headers);
+    fs.createReadStream(filePath).pipe(res);
+  });
+}
+
+// --- Profiles API: name+password accounts so settings can be signed into
+// from any device on the LAN, not just the browser that created them. Stored
+// as a JSON file on disk (this is a small local hub, not a real database).
+// Passwords never arrive here in plaintext — the client hashes them first —
+// but this is still "stop a sibling from messing with your settings" level
+// security, not a real auth system (no rate limiting, no password recovery).
+// packaged desktop builds pass MIMI_DATA_DIR (a writable per-OS app-data
+// directory) since the install directory itself is typically read-only;
+// unset in normal dev/LAN-hosting use, where writing next to server.js
+// itself has always been fine
+const PROFILES_PATH = path.join(process.env.MIMI_DATA_DIR || ROOT, "data", "profiles.json");
+
+function loadProfilesFromDisk() {
+  try {
+    return JSON.parse(fs.readFileSync(PROFILES_PATH, "utf8"));
+  } catch (e) {
+    if (e.code !== "ENOENT") {
+      // File exists but couldn't be read/parsed — starting empty here would
+      // otherwise silently discard it the moment anything calls
+      // saveProfilesToDisk(). Refuse to boot instead: losing profiles once
+      // (see incident 2026-08-15) taught us a silent {} fallback is how a
+      // real file goes missing without anyone noticing until it's too late.
+      console.error(`profiles.json exists but failed to load (${e.message}) — refusing to start with an empty profile set. Fix or move aside ${PROFILES_PATH} and restart.`);
+      process.exit(1);
+    }
+    console.log(`No profiles.json found at ${PROFILES_PATH} — starting with an empty profile set.`);
+    return {};
+  }
+}
+function saveProfilesToDisk() {
+  try {
+    fs.mkdirSync(path.dirname(PROFILES_PATH), { recursive: true });
+    // Keep one prior copy before every overwrite, so an in-memory `profiles`
+    // that's wrong for any reason can't permanently erase the last-known-good
+    // file on disk the moment anything triggers a save.
+    if (fs.existsSync(PROFILES_PATH)) {
+      fs.copyFileSync(PROFILES_PATH, `${PROFILES_PATH}.bak`);
+    }
+    fs.writeFileSync(PROFILES_PATH, JSON.stringify(profiles, null, 2));
+  } catch (e) {
+    console.error("Failed to persist profiles.json:", e.message);
+  }
+}
+const profiles = loadProfilesFromDisk(); // { [key]: { name, passwordHash, dev, settings, updatedAt, createdAt, email, recoveryCodeHash, passkeys, avatar, kartColor, following, achievements } }
+// Signup used to trust body.dev outright — any client could POST
+// {dev: true} (not even through the UI checkbox, a bare API call was
+// enough) and get dev-only capabilities (the Admin panel, and now the
+// Kart Circuit fly cheat) with nothing checking it server-side, the only
+// place that check can actually mean anything. Hashed the same way as a
+// profile's own password (see hashPassword in js/profiles.js) with a fixed
+// "dev-gate" key in place of a per-profile one, so the real password is
+// never sent or stored in the clear.
+const DEV_SIGNUP_PASSWORD_HASH = "dd2a0d8da7d9cc17405586af3658ec7e3196ae67e93c1974f8674c574ab0c303";
+// avatar is a small data: URI (client resizes/compresses to ~96px before
+// upload) — capped well under the request body limit below so one oversized
+// image can't bloat data/profiles.json or the request itself.
+const MAX_AVATAR_LEN = 60000;
+
+// Any profile created before this field existed has no createdAt at all —
+// backfill from updatedAt (its oldest known timestamp) once, in memory, so
+// age-based achievements work without a separate migration script. Persists
+// naturally the next time saveProfilesToDisk() runs for any reason.
+Object.values(profiles).forEach((entry) => {
+  if (!entry.createdAt) entry.createdAt = entry.updatedAt || Date.now();
+  if (!entry.following) entry.following = [];
+  if (!entry.achievements) entry.achievements = { unlocked: {} };
+  if (entry.kartColor === undefined) entry.kartColor = null;
+});
+
+// Kept in sync by hand with racerPalette in games/mario-kart/game.js — no
+// shared module between client and server today (same as every other
+// profile-field validation here, e.g. MAX_AVATAR_LEN), so this is a literal
+// duplicate, not an import.
+const KART_COLOR_SWATCHES = [
+  "#ffd166", "#53e0ff", "#ff6b6b", "#9bff8f", "#c792ff", "#5dd6ff", "#ff9f6e",
+  "#63f0b1", "#ffd36f", "#8ec5ff", "#ff88ad", "#9cf77e", "#f4a7ff",
+];
+
+// --- Leaderboards: a separate top-level store, same load/save shape as
+// profiles.json (rotating .bak before every overwrite, refuse to boot on a
+// parse failure rather than silently reset) — see loadProfilesFromDisk's own
+// comment for why that matters. ---
+const LEADERBOARDS_PATH = path.join(process.env.MIMI_DATA_DIR || ROOT, "data", "leaderboards.json");
+
+function loadLeaderboardsFromDisk() {
+  try {
+    return JSON.parse(fs.readFileSync(LEADERBOARDS_PATH, "utf8"));
+  } catch (e) {
+    if (e.code !== "ENOENT") {
+      console.error(`leaderboards.json exists but failed to load (${e.message}) — refusing to start with an empty leaderboard set. Fix or move aside ${LEADERBOARDS_PATH} and restart.`);
+      process.exit(1);
+    }
+    console.log(`No leaderboards.json found at ${LEADERBOARDS_PATH} — starting with empty leaderboards.`);
+    return {};
+  }
+}
+function saveLeaderboardsToDisk() {
+  try {
+    fs.mkdirSync(path.dirname(LEADERBOARDS_PATH), { recursive: true });
+    if (fs.existsSync(LEADERBOARDS_PATH)) {
+      fs.copyFileSync(LEADERBOARDS_PATH, `${LEADERBOARDS_PATH}.bak`);
+    }
+    fs.writeFileSync(LEADERBOARDS_PATH, JSON.stringify(leaderboards, null, 2));
+  } catch (e) {
+    console.error("Failed to persist leaderboards.json:", e.message);
+  }
+}
+// { [gameId]: { [profileKey]: { name, avatar, value, updatedAt } } }
+const leaderboards = loadLeaderboardsFromDisk();
+
+// --- Cake Bakery's shared feed: a single ever-growing-until-capped list of
+// published cakes, same load/save shape (and same "refuse to boot on a
+// parse failure" reasoning) as leaderboards.json above. ---
+const CAKES_PATH = path.join(process.env.MIMI_DATA_DIR || ROOT, "data", "cakes.json");
+const MAX_STORED_CAKES = 200;
+
+function loadCakesFromDisk() {
+  try {
+    return JSON.parse(fs.readFileSync(CAKES_PATH, "utf8"));
+  } catch (e) {
+    if (e.code !== "ENOENT") {
+      console.error(`cakes.json exists but failed to load (${e.message}) — refusing to start with an empty cake feed. Fix or move aside ${CAKES_PATH} and restart.`);
+      process.exit(1);
+    }
+    console.log(`No cakes.json found at ${CAKES_PATH} — starting with an empty cake feed.`);
+    return [];
+  }
+}
+function saveCakesToDisk() {
+  try {
+    fs.mkdirSync(path.dirname(CAKES_PATH), { recursive: true });
+    if (fs.existsSync(CAKES_PATH)) {
+      fs.copyFileSync(CAKES_PATH, `${CAKES_PATH}.bak`);
+    }
+    fs.writeFileSync(CAKES_PATH, JSON.stringify(cakes, null, 2));
+  } catch (e) {
+    console.error("Failed to persist cakes.json:", e.message);
+  }
+}
+// [{ id, name, base, toppings: [...], createdAt }], newest last on disk —
+// handleCakesApi's own "list" action is what reverses to newest-first
+const cakes = loadCakesFromDisk();
+
+// The server owns sortDir per game — never trusts a client's claimed
+// direction, or a malicious client could submit a terrible score claiming
+// "lower is better" and rank #1 with it.
+const LEADERBOARD_GAMES = {
+  snake: { label: "Snake", sortDir: "desc" },
+  "2048": { label: "2048", sortDir: "desc" },
+  "reaction-test": { label: "Reaction Test", sortDir: "asc" }, // lower ms is better
+  bowling: { label: "Bowling", sortDir: "desc" },
+  darts: { label: "Darts", sortDir: "desc" },
+  "field-tag": { label: "Field Tag", sortDir: "desc" },
+  "cake-bakery": { label: "Cake Streak", sortDir: "desc" },
+};
+
+// --- Achievements ---
+// Client-attested ids (unlock-achievement): self-reported by the browser,
+// e.g. "played 10 distinct games" derived from locally-synced play history.
+// Explicitly spoofable by anyone calling the API directly — same trust model
+// as everything else here (client-hashed passwords, no server-side
+// anti-cheat anywhere in this hub). Judged acceptable for a friend-group hub.
+const CLIENT_ATTESTED_ACHIEVEMENTS = new Set([
+  "first-boot", "ten-games", "forty-games", "all-80", "party-started",
+]);
+// Server-verified ids: checked against ground truth the server already owns
+// (checkServerAchievements below) — these can't be unlocked via
+// unlock-achievement directly, only via check-achievements.
+function checkServerAchievements(key, entry) {
+  const unlocked = [];
+  const ageDays = (Date.now() - (entry.createdAt || Date.now())) / (24 * 60 * 60 * 1000);
+  if (ageDays >= 7) unlocked.push("regular");
+  if (ageDays >= 90) unlocked.push("old-timer");
+
+  const mutualCount = mutualFriendCount(key, entry);
+  if (mutualCount >= 1) unlocked.push("made-a-friend");
+  if (mutualCount >= 5) unlocked.push("popular");
+
+  const onAnyBoard = Object.values(leaderboards).some((board) => board[key]);
+  if (onAnyBoard) unlocked.push("on-the-board");
+
+  if (entry.kartColor) unlocked.push("kitted-out");
+
+  return unlocked;
+}
+
+// Shared by checkServerAchievements and handleFriendsApi's "list" action —
+// O(n) reverse scan over all profiles to find who follows `key` back. Fine
+// at this hub's scale (same trust/scale assumption as the existing dev-only
+// "list" action).
+function mutualFriendCount(key, entry) {
+  const followingSet = new Set(entry.following || []);
+  let count = 0;
+  Object.entries(profiles).forEach(([otherKey, other]) => {
+    if (followingSet.has(otherKey) && (other.following || []).includes(key)) count += 1;
+  });
+  return count;
+}
+
+function isNonEmptyString(v, maxLen) {
+  return typeof v === "string" && v.length > 0 && v.length <= maxLen;
+}
+
+// --- Extra ways to secure/recover an account, on top of name+password ---
+//
+// 1. Passkeys (WebAuthn): the actual fingerprint/Face ID/Windows Hello check
+//    happens entirely on the user's own device via their OS/browser — this
+//    server never sees, receives, or stores anything biometric. All it ever
+//    handles is a public key and a signature-verification ceremony, exactly
+//    like every other WebAuthn Relying Party. See MDN's WebAuthn docs for the
+//    ceremony shape if any of this looks unfamiliar.
+// 2. An optional recovery email — stored for reference only. This hub has no
+//    mail server configured (it's a local/LAN dev server with a self-signed
+//    cert, not a real hosted service), so this can't actually send a reset
+//    link; it's shown back to a dev doing manual support, nothing more. Not
+//    oversold as more than that anywhere in the UI copy either.
+// 3. A one-time recovery code, generated on request and shown exactly once —
+//    this is what actually solves "I forgot my password and there's no email
+//    server to reset it with." Single-use: using it to set a new password
+//    immediately invalidates it, same as any backup-code scheme.
+const PENDING_CHALLENGE_TTL_MS = 5 * 60 * 1000;
+const pendingChallenges = new Map(); // key -> { challenge, expiresAt, kind: "register" | "authenticate" }
+
+function setPendingChallenge(key, challenge, kind) {
+  pendingChallenges.set(key, { challenge, expiresAt: Date.now() + PENDING_CHALLENGE_TTL_MS, kind });
+}
+function takePendingChallenge(key, kind) {
+  const entry = pendingChallenges.get(key);
+  pendingChallenges.delete(key);
+  if (!entry || entry.kind !== kind || entry.expiresAt < Date.now()) return null;
+  return entry.challenge;
+}
+
+// WebAuthn's rpID must be a real hostname, never an IP address or a
+// scheme+port — derive it from whatever host the browser actually used
+// (localhost for the same machine, a LAN hostname if this hub is reached
+// that way). A raw LAN IP will make the browser itself reject the
+// ceremony; that's the browser enforcing the spec, not something this
+// server can work around, so registering a passkey only works from a
+// device that reaches this hub by hostname rather than by IP.
+function rpInfoFromRequest(req) {
+  const hostHeader = req.headers.host || "localhost";
+  const hostname = hostHeader.split(":")[0];
+  const proto = hasCert ? "https" : "http";
+  return { rpID: hostname, rpName: "51 Mimi Games", origin: `${proto}://${hostHeader}` };
+}
+
+function generateRecoveryCode() {
+  // grouped like XXXX-XXXX-XXXX for readability when someone has to copy it
+  // down by hand; excludes visually-ambiguous characters (0/O, 1/I/L)
+  const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  const groups = Array.from({ length: 3 }, () =>
+    Array.from({ length: 4 }, () => alphabet[crypto.randomInt(alphabet.length)]).join(""));
+  return groups.join("-");
+}
+function hashRecoveryCode(code) {
+  return crypto.createHash("sha256").update("mimiRecovery:" + code.toUpperCase()).digest("hex");
+}
+// never send publicKey/counter to the client — it doesn't need either, and
+// keeping them server-only is just good hygiene even though a public key
+// isn't secret by definition
+function publicPasskeys(entry) {
+  return (entry.passkeys || []).map((p) => ({ id: p.id, label: p.label, createdAt: p.createdAt }));
+}
+
+function readJsonBody(req, maxBytes) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > maxBytes) {
+        reject(new Error("Payload too large"));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => {
+      try {
+        resolve(chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : {});
+      } catch (e) {
+        reject(new Error("Invalid JSON"));
+      }
+    });
+    req.on("error", reject);
+  });
+}
+
+function sendJson(res, status, obj) {
+  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+  res.end(JSON.stringify(obj));
+}
+
+// Per-IP request limiter for the API — this hub was originally "stop a
+// sibling from messing with your settings" on a LAN, with nothing standing
+// between it and unlimited profile-creation spam or password brute-forcing
+// (see the comment above PROFILES_PATH). Fine on a LAN where every device
+// belongs to someone in the room; not fine once this is reachable from the
+// open internet. Deliberately simple — an in-memory sliding window, no
+// dependency — proportionate to what this app actually is, not a
+// general-purpose API gateway. Two tiers: a loose one covering every API
+// call (catches raw flooding) and a much tighter one for the specific
+// actions worth slowing down on purpose (account creation and login are
+// the ones brute-forcing/spam actually targets).
+const RATE_LIMIT_GENERAL = { windowMs: 60_000, max: 120 };
+const RATE_LIMIT_STRICT = { windowMs: 60_000, max: 15 };
+const rateLimitBuckets = new Map(); // `${tier}:${ip}` -> { count, resetAt }
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of rateLimitBuckets) {
+    if (entry.resetAt <= now) rateLimitBuckets.delete(key);
+  }
+}, 5 * 60_000).unref();
+
+// Render (and most real hosts) put the app behind a reverse proxy, so the
+// socket's own remoteAddress is the proxy's internal IP, not the client's —
+// x-forwarded-for is the standard way that's actually communicated. Trusted
+// here because this app has no other reason to expose itself directly
+// (dev/LAN use terminates locally, hosted use is expected to sit behind
+// exactly one trusted proxy) — a header any client could otherwise spoof to
+// dodge its own limit.
+function clientIp(req) {
+  const forwarded = req.headers["x-forwarded-for"];
+  if (typeof forwarded === "string" && forwarded.trim()) return forwarded.split(",")[0].trim();
+  return req.socket.remoteAddress || "unknown";
+}
+
+// Returns true and records the hit if this IP is still under `tier`'s
+// limit; returns false (and sends 429 itself) once it isn't. Call sites
+// just need to `if (!checkRateLimit(...)) return;` right after routing.
+function checkRateLimit(req, res, tierName, tier) {
+  const ip = clientIp(req);
+  const key = `${tierName}:${ip}`;
+  const now = Date.now();
+  const entry = rateLimitBuckets.get(key);
+  if (!entry || entry.resetAt <= now) {
+    rateLimitBuckets.set(key, { count: 1, resetAt: now + tier.windowMs });
+    return true;
+  }
+  if (entry.count >= tier.max) {
+    sendJson(res, 429, { ok: false, msg: "Too many requests — try again in a minute." });
+    return false;
+  }
+  entry.count += 1;
+  return true;
+}
+
+// The actions where guessing matters: creating an account (spam) and
+// anything that checks a password/credential (brute-forcing). The general
+// per-IP limit above already catches raw flooding across all of /api/;
+// this one is deliberately much tighter, and only on these specific
+// actions, since 120/min is a reasonable ceiling for normal play but a
+// very generous budget for guessing passwords.
+const SENSITIVE_PROFILE_ACTIONS = new Set([
+  "create", "login", "changepassword", "recover",
+  "passkey-login-verify", "passkey-register-verify",
+]);
+
+async function handleProfilesApi(req, res, action) {
+  if (req.method !== "POST") {
+    sendJson(res, 405, { ok: false, msg: "Method not allowed." });
+    return;
+  }
+  if (SENSITIVE_PROFILE_ACTIONS.has(action) && !checkRateLimit(req, res, "profile-auth", RATE_LIMIT_STRICT)) return;
+  let body;
+  try {
+    body = await readJsonBody(req, 96 * 1024);
+  } catch (e) {
+    sendJson(res, 400, { ok: false, msg: "Bad request." });
+    return;
+  }
+
+  const key = typeof body.key === "string" ? body.key.trim().toLowerCase() : "";
+  if (!isNonEmptyString(key, 40)) {
+    sendJson(res, 400, { ok: false, msg: "Missing name." });
+    return;
+  }
+  // passwordHash is required by most actions but not all (passkey sign-in
+  // proves identity with a signature instead; recovery proves it with a
+  // one-time code) — validated per-action below instead of universally here.
+  const passwordHash = typeof body.passwordHash === "string" ? body.passwordHash : "";
+  const entry = profiles[key];
+  function wrongPassword() {
+    return !entry || !isNonEmptyString(passwordHash, 200) || entry.passwordHash !== passwordHash;
+  }
+
+  if (action === "create") {
+    if (profiles[key]) {
+      sendJson(res, 200, { ok: false, msg: "That name is already taken — try Sign In instead." });
+      return;
+    }
+    if (!isNonEmptyString(passwordHash, 200)) {
+      sendJson(res, 400, { ok: false, msg: "Missing password." });
+      return;
+    }
+    const wantsDev = Boolean(body.dev);
+    const devPasswordHash = typeof body.devPasswordHash === "string" ? body.devPasswordHash : "";
+    if (wantsDev && devPasswordHash !== DEV_SIGNUP_PASSWORD_HASH) {
+      sendJson(res, 200, { ok: false, msg: "Wrong dev password." });
+      return;
+    }
+    const now = Date.now();
+    profiles[key] = {
+      name: isNonEmptyString(body.name, 24) ? body.name : key,
+      passwordHash,
+      dev: wantsDev,
+      settings: body.settings && typeof body.settings === "object" ? body.settings : {},
+      updatedAt: now,
+      createdAt: now,
+      email: null,
+      recoveryCodeHash: null,
+      passkeys: [],
+      avatar: null,
+      kartColor: null,
+      following: [],
+      achievements: { unlocked: {} },
+    };
+    saveProfilesToDisk();
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+  if (action === "login") {
+    if (!entry) { sendJson(res, 200, { ok: false, msg: "No profile with that name." }); return; }
+    if (entry.passwordHash !== passwordHash) { sendJson(res, 200, { ok: false, msg: "Wrong password." }); return; }
+    sendJson(res, 200, { ok: true, name: entry.name, dev: entry.dev, settings: entry.settings, email: entry.email || null, passkeys: publicPasskeys(entry), avatar: entry.avatar || null, kartColor: entry.kartColor || null });
+    return;
+  }
+
+  if (action === "save") {
+    if (!entry) { sendJson(res, 200, { ok: false, msg: "No profile with that name." }); return; }
+    if (entry.passwordHash !== passwordHash) { sendJson(res, 200, { ok: false, msg: "Wrong password." }); return; }
+    entry.settings = body.settings && typeof body.settings === "object" ? body.settings : {};
+    entry.updatedAt = Date.now();
+    saveProfilesToDisk();
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  if (action === "delete") {
+    if (!entry) { sendJson(res, 200, { ok: false, msg: "No profile with that name." }); return; }
+    if (entry.passwordHash !== passwordHash) { sendJson(res, 200, { ok: false, msg: "Wrong password." }); return; }
+    delete profiles[key];
+    saveProfilesToDisk();
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  // self-service: any signed-in profile can change its OWN password by
+  // proving it knows the current one (same passwordHash check as save/delete)
+  if (action === "changepassword") {
+    if (!entry) { sendJson(res, 200, { ok: false, msg: "No profile with that name." }); return; }
+    if (entry.passwordHash !== passwordHash) { sendJson(res, 200, { ok: false, msg: "Current password is wrong." }); return; }
+    const newPasswordHash = typeof body.newPasswordHash === "string" ? body.newPasswordHash : "";
+    if (!isNonEmptyString(newPasswordHash, 200)) { sendJson(res, 400, { ok: false, msg: "Missing new password." }); return; }
+    entry.passwordHash = newPasswordHash;
+    entry.updatedAt = Date.now();
+    saveProfilesToDisk();
+    sendJson(res, 200, { ok: true, msg: "Password changed." });
+    return;
+  }
+
+  // "list" and "reset" are dev-only: the requester (key/passwordHash) must be
+  // an existing profile with dev:true. Passwords are never sent back — list
+  // only ever returns names/flags, and reset only ever lets a dev SET a new
+  // password on another profile, never see the old one.
+  if (action === "list" || action === "reset") {
+    if (!entry) { sendJson(res, 200, { ok: false, msg: "No profile with that name." }); return; }
+    if (entry.passwordHash !== passwordHash) { sendJson(res, 200, { ok: false, msg: "Wrong password." }); return; }
+    if (!entry.dev) { sendJson(res, 403, { ok: false, msg: "Dev profiles only." }); return; }
+
+    if (action === "list") {
+      const list = Object.keys(profiles).map((k) => ({
+        key: k,
+        name: profiles[k].name,
+        dev: Boolean(profiles[k].dev),
+        updatedAt: profiles[k].updatedAt,
+      }));
+      sendJson(res, 200, { ok: true, profiles: list });
+      return;
+    }
+
+    // reset
+    const targetKey = typeof body.targetKey === "string" ? body.targetKey.trim().toLowerCase() : "";
+    const newPasswordHash = typeof body.newPasswordHash === "string" ? body.newPasswordHash : "";
+    if (!isNonEmptyString(targetKey, 40) || !isNonEmptyString(newPasswordHash, 200)) {
+      sendJson(res, 400, { ok: false, msg: "Missing target or new password." });
+      return;
+    }
+    const target = profiles[targetKey];
+    if (!target) { sendJson(res, 200, { ok: false, msg: "No profile with that name." }); return; }
+    target.passwordHash = newPasswordHash;
+    target.updatedAt = Date.now();
+    saveProfilesToDisk();
+    sendJson(res, 200, { ok: true, msg: `Password reset for "${target.name}".` });
+    return;
+  }
+
+  // --- Passkeys (WebAuthn) ---
+
+  // adding a passkey requires proving you already know the password — a
+  // passkey is an *additional* way in, not a way to bypass the first one
+  if (action === "passkey-register-options") {
+    if (wrongPassword()) { sendJson(res, 200, { ok: false, msg: "Wrong password." }); return; }
+    const { rpID, rpName } = rpInfoFromRequest(req);
+    try {
+      const options = await generateRegistrationOptions({
+        rpName,
+        rpID,
+        userName: entry.name,
+        userDisplayName: entry.name,
+        attestationType: "none",
+        excludeCredentials: (entry.passkeys || []).map((p) => ({ id: p.id, transports: p.transports })),
+        authenticatorSelection: { residentKey: "preferred", userVerification: "preferred" },
+      });
+      setPendingChallenge(key, options.challenge, "register");
+      sendJson(res, 200, { ok: true, options });
+    } catch (e) {
+      sendJson(res, 200, { ok: false, msg: "Couldn't start passkey setup: " + e.message });
+    }
+    return;
+  }
+
+  if (action === "passkey-register-verify") {
+    if (wrongPassword()) { sendJson(res, 200, { ok: false, msg: "Wrong password." }); return; }
+    const { rpID, origin } = rpInfoFromRequest(req);
+    const expectedChallenge = takePendingChallenge(key, "register");
+    if (!expectedChallenge) { sendJson(res, 200, { ok: false, msg: "That took too long — try adding the passkey again." }); return; }
+    try {
+      const verification = await verifyRegistrationResponse({
+        response: body.credential,
+        expectedChallenge,
+        expectedOrigin: origin,
+        expectedRPID: rpID,
+      });
+      if (!verification.verified || !verification.registrationInfo) {
+        sendJson(res, 200, { ok: false, msg: "That passkey couldn't be verified." });
+        return;
+      }
+      const { credential } = verification.registrationInfo;
+      entry.passkeys = entry.passkeys || [];
+      entry.passkeys.push({
+        id: credential.id,
+        publicKey: Buffer.from(credential.publicKey).toString("base64url"),
+        counter: credential.counter,
+        transports: credential.transports || [],
+        label: isNonEmptyString(body.label, 40) ? body.label : "Passkey",
+        createdAt: Date.now(),
+      });
+      entry.updatedAt = Date.now();
+      saveProfilesToDisk();
+      sendJson(res, 200, { ok: true, msg: "Passkey added.", passkeys: publicPasskeys(entry) });
+    } catch (e) {
+      sendJson(res, 200, { ok: false, msg: "That passkey couldn't be verified: " + e.message });
+    }
+    return;
+  }
+
+  if (action === "passkey-remove") {
+    if (wrongPassword()) { sendJson(res, 200, { ok: false, msg: "Wrong password." }); return; }
+    const credentialId = typeof body.credentialId === "string" ? body.credentialId : "";
+    entry.passkeys = (entry.passkeys || []).filter((p) => p.id !== credentialId);
+    entry.updatedAt = Date.now();
+    saveProfilesToDisk();
+    sendJson(res, 200, { ok: true, passkeys: publicPasskeys(entry) });
+    return;
+  }
+
+  // signing in WITH a passkey — no password involved at all, the signature
+  // IS the proof of identity
+  if (action === "passkey-login-options") {
+    if (!entry || !(entry.passkeys || []).length) {
+      sendJson(res, 200, { ok: false, msg: "No passkey set up for that name." });
+      return;
+    }
+    const { rpID } = rpInfoFromRequest(req);
+    try {
+      const options = await generateAuthenticationOptions({
+        rpID,
+        allowCredentials: entry.passkeys.map((p) => ({ id: p.id, transports: p.transports })),
+        userVerification: "preferred",
+      });
+      setPendingChallenge(key, options.challenge, "authenticate");
+      sendJson(res, 200, { ok: true, options });
+    } catch (e) {
+      sendJson(res, 200, { ok: false, msg: "Couldn't start passkey sign-in: " + e.message });
+    }
+    return;
+  }
+
+  if (action === "passkey-login-verify") {
+    if (!entry) { sendJson(res, 200, { ok: false, msg: "No profile with that name." }); return; }
+    const { rpID, origin } = rpInfoFromRequest(req);
+    const expectedChallenge = takePendingChallenge(key, "authenticate");
+    if (!expectedChallenge) { sendJson(res, 200, { ok: false, msg: "That took too long — try again." }); return; }
+    const credentialId = body.credential && body.credential.id;
+    const stored = (entry.passkeys || []).find((p) => p.id === credentialId);
+    if (!stored) { sendJson(res, 200, { ok: false, msg: "That passkey isn't registered here." }); return; }
+    try {
+      const verification = await verifyAuthenticationResponse({
+        response: body.credential,
+        expectedChallenge,
+        expectedOrigin: origin,
+        expectedRPID: rpID,
+        credential: {
+          id: stored.id,
+          publicKey: Buffer.from(stored.publicKey, "base64url"),
+          counter: stored.counter,
+          transports: stored.transports,
+        },
+      });
+      if (!verification.verified) {
+        sendJson(res, 200, { ok: false, msg: "Passkey sign-in couldn't be verified." });
+        return;
+      }
+      // the counter should only ever go up — an authenticator that reports a
+      // counter equal to or lower than last time suggests a cloned
+      // authenticator (a real, if rare, thing this check exists to catch)
+      stored.counter = verification.authenticationInfo.newCounter;
+      saveProfilesToDisk();
+      sendJson(res, 200, { ok: true, name: entry.name, dev: entry.dev, settings: entry.settings, email: entry.email || null, passkeys: publicPasskeys(entry), avatar: entry.avatar || null, kartColor: entry.kartColor || null });
+    } catch (e) {
+      sendJson(res, 200, { ok: false, msg: "Passkey sign-in couldn't be verified: " + e.message });
+    }
+    return;
+  }
+
+  // --- Recovery email (reference only — see the comment above this block's
+  // definitions for why this hub can't actually send a reset email) ---
+  if (action === "set-email") {
+    if (wrongPassword()) { sendJson(res, 200, { ok: false, msg: "Wrong password." }); return; }
+    const email = typeof body.email === "string" ? body.email.trim().slice(0, 254) : "";
+    entry.email = email || null;
+    entry.updatedAt = Date.now();
+    saveProfilesToDisk();
+    sendJson(res, 200, { ok: true, email: entry.email });
+    return;
+  }
+
+  // --- Profile picture: a small data: URI, resized/compressed to ~96px by
+  // the browser before it ever gets here (see setProfileAvatar in
+  // js/profiles.js) — shown next to your name in the profile panel, and
+  // sent along when hosting/joining a Kart Circuit wireless race so other
+  // racers see your photo in their camera strip. ---
+  if (action === "set-avatar") {
+    if (wrongPassword()) { sendJson(res, 200, { ok: false, msg: "Wrong password." }); return; }
+    const avatar = typeof body.avatar === "string" ? body.avatar : "";
+    if (avatar && (!avatar.startsWith("data:image/") || avatar.length > MAX_AVATAR_LEN)) {
+      sendJson(res, 400, { ok: false, msg: "Picture is invalid or too large." });
+      return;
+    }
+    entry.avatar = avatar || null;
+    entry.updatedAt = Date.now();
+    saveProfilesToDisk();
+    sendJson(res, 200, { ok: true, avatar: entry.avatar });
+    return;
+  }
+
+  // --- Kart Circuit color: a chosen entry from the fixed swatch list (kept
+  // in sync with racerPalette in games/mario-kart/game.js), synced to the
+  // profile so it follows you across devices the same way avatar does. ---
+  if (action === "set-kart-color") {
+    if (wrongPassword()) { sendJson(res, 200, { ok: false, msg: "Wrong password." }); return; }
+    const kartColor = typeof body.kartColor === "string" ? body.kartColor : "";
+    if (kartColor && !KART_COLOR_SWATCHES.includes(kartColor)) {
+      sendJson(res, 400, { ok: false, msg: "Not a valid kart color." });
+      return;
+    }
+    entry.kartColor = kartColor || null;
+    entry.updatedAt = Date.now();
+    saveProfilesToDisk();
+    sendJson(res, 200, { ok: true, kartColor: entry.kartColor });
+    return;
+  }
+
+  // --- Achievements ---
+  // Client-attested: self-reported by the browser (e.g. "played 10 distinct
+  // games", derived from locally-synced play history the server has no
+  // direct view into). See CLIENT_ATTESTED_ACHIEVEMENTS's own comment for
+  // the trust-model tradeoff this accepts.
+  if (action === "unlock-achievement") {
+    if (wrongPassword()) { sendJson(res, 200, { ok: false, msg: "Wrong password." }); return; }
+    const id = typeof body.achievementId === "string" ? body.achievementId : "";
+    if (!CLIENT_ATTESTED_ACHIEVEMENTS.has(id)) {
+      sendJson(res, 400, { ok: false, msg: "Not a client-attestable achievement." });
+      return;
+    }
+    entry.achievements = entry.achievements || { unlocked: {} };
+    if (!entry.achievements.unlocked[id]) {
+      entry.achievements.unlocked[id] = Date.now();
+      saveProfilesToDisk();
+    }
+    sendJson(res, 200, { ok: true, unlocked: entry.achievements.unlocked });
+    return;
+  }
+
+  // Re-evaluates every server-verifiable achievement (profile age, mutual
+  // friends, leaderboard participation, kart color) against ground truth the
+  // server already owns, unlocking anything newly satisfied. Cheap enough to
+  // call on every achievements-panel-open — no separate tracking/event
+  // system needed for these.
+  if (action === "check-achievements") {
+    if (wrongPassword()) { sendJson(res, 200, { ok: false, msg: "Wrong password." }); return; }
+    entry.achievements = entry.achievements || { unlocked: {} };
+    let changed = false;
+    checkServerAchievements(key, entry).forEach((id) => {
+      if (!entry.achievements.unlocked[id]) {
+        entry.achievements.unlocked[id] = Date.now();
+        changed = true;
+      }
+    });
+    if (changed) saveProfilesToDisk();
+    sendJson(res, 200, { ok: true, unlocked: entry.achievements.unlocked });
+    return;
+  }
+
+  // --- One-time recovery code: the actual answer to "I forgot my password
+  // and there's no mail server to reset it with" ---
+  if (action === "generate-recovery-code") {
+    if (wrongPassword()) { sendJson(res, 200, { ok: false, msg: "Wrong password." }); return; }
+    const code = generateRecoveryCode();
+    entry.recoveryCodeHash = hashRecoveryCode(code);
+    entry.updatedAt = Date.now();
+    saveProfilesToDisk();
+    // the only time the plaintext code ever exists outside the user's own
+    // head/notes — shown once, never stored, never retrievable again
+    sendJson(res, 200, { ok: true, code });
+    return;
+  }
+
+  if (action === "recover") {
+    if (!entry || !entry.recoveryCodeHash) { sendJson(res, 200, { ok: false, msg: "No recovery code set up for that name." }); return; }
+    const code = typeof body.recoveryCode === "string" ? body.recoveryCode.trim() : "";
+    const newPasswordHash = typeof body.newPasswordHash === "string" ? body.newPasswordHash : "";
+    if (!isNonEmptyString(code, 20) || !isNonEmptyString(newPasswordHash, 200)) {
+      sendJson(res, 400, { ok: false, msg: "Missing recovery code or new password." });
+      return;
+    }
+    if (hashRecoveryCode(code) !== entry.recoveryCodeHash) {
+      sendJson(res, 200, { ok: false, msg: "That recovery code is wrong." });
+      return;
+    }
+    entry.passwordHash = newPasswordHash;
+    // single-use, like any backup code — a fresh one has to be generated
+    // (while signed in normally) after this
+    entry.recoveryCodeHash = null;
+    entry.updatedAt = Date.now();
+    saveProfilesToDisk();
+    sendJson(res, 200, { ok: true, msg: "Password reset. Your recovery code has been used up — generate a new one from Settings once you're signed in." });
+    return;
+  }
+
+  sendJson(res, 404, { ok: false, msg: "Unknown action." });
+}
+
+// ---------- Leaderboards ----------
+async function handleLeaderboardsApi(req, res, action) {
+  if (action === "top") {
+    // read-only, no auth needed — same LAN-trust level as the rest of this
+    // app (nothing here requires a login to browse)
+    const url = new URL(req.url, "http://localhost");
+    const gameId = url.searchParams.get("gameId") || "";
+    if (!LEADERBOARD_GAMES[gameId]) { sendJson(res, 400, { ok: false, msg: "Unknown game." }); return; }
+    const limit = Math.max(1, Math.min(100, parseInt(url.searchParams.get("limit"), 10) || 50));
+    const sortDir = LEADERBOARD_GAMES[gameId].sortDir;
+    const board = leaderboards[gameId] || {};
+    const entries = Object.entries(board)
+      .map(([key, row]) => ({ key, ...row }))
+      .sort((a, b) => (sortDir === "asc" ? a.value - b.value : b.value - a.value))
+      .slice(0, limit);
+    sendJson(res, 200, { ok: true, gameId, sortDir, entries });
+    return;
+  }
+
+  if (req.method !== "POST") { sendJson(res, 405, { ok: false, msg: "Method not allowed." }); return; }
+  let body;
+  try {
+    body = await readJsonBody(req, 8 * 1024);
+  } catch (e) {
+    sendJson(res, 400, { ok: false, msg: "Bad request." });
+    return;
+  }
+  const key = typeof body.key === "string" ? body.key.trim().toLowerCase() : "";
+  const passwordHash = typeof body.passwordHash === "string" ? body.passwordHash : "";
+  const entry = profiles[key];
+  if (!entry || !isNonEmptyString(passwordHash, 200) || entry.passwordHash !== passwordHash) {
+    sendJson(res, 200, { ok: false, msg: "Wrong password." });
+    return;
+  }
+
+  if (action === "submit") {
+    const gameId = typeof body.gameId === "string" ? body.gameId : "";
+    const config = LEADERBOARD_GAMES[gameId];
+    if (!config) { sendJson(res, 400, { ok: false, msg: "Unknown game." }); return; }
+    const value = Number(body.value);
+    if (!Number.isFinite(value) || Math.abs(value) >= 1e9) {
+      sendJson(res, 400, { ok: false, msg: "Invalid score." });
+      return;
+    }
+    leaderboards[gameId] = leaderboards[gameId] || {};
+    const board = leaderboards[gameId];
+    const existing = board[key];
+    // Only overwrite if this is a genuine improvement (or the first entry) —
+    // catches an accidental regression (e.g. a later, worse run) from
+    // clobbering a real best. Doesn't stop a deliberately spoofed value; see
+    // the achievements/leaderboards out-of-scope note for that trust
+    // boundary.
+    const isBetter = !existing || (config.sortDir === "asc" ? value < existing.value : value > existing.value);
+    if (isBetter) {
+      board[key] = { name: entry.name, avatar: entry.avatar || null, value, updatedAt: Date.now() };
+      saveLeaderboardsToDisk();
+      // rank #1 achievement, awarded right here rather than waiting for the
+      // player to separately open the Achievements panel
+      const sorted = Object.entries(board).sort((a, b) =>
+        config.sortDir === "asc" ? a[1].value - b[1].value : b[1].value - a[1].value);
+      if (sorted[0] && sorted[0][0] === key) {
+        entry.achievements = entry.achievements || { unlocked: {} };
+        if (!entry.achievements.unlocked["top-of-the-charts"]) {
+          entry.achievements.unlocked["top-of-the-charts"] = Date.now();
+          saveProfilesToDisk();
+        }
+      }
+    }
+    sendJson(res, 200, { ok: true, saved: isBetter, best: board[key].value });
+    return;
+  }
+
+  sendJson(res, 404, { ok: false, msg: "Unknown action." });
+}
+
+// Mirrors the id lists js/games/cake-bakery.js draws its palette from —
+// kept in sync by hand (both lists are short and rarely change) rather than
+// sharing a module, since client and server code aren't otherwise bundled
+// together anywhere in this app.
+const CAKE_BASE_IDS = new Set(["vanilla", "chocolate", "strawberry", "mint"]);
+const CAKE_TOPPING_IDS = new Set(["none", "cherry", "sprinkles", "chocolate-drizzle", "strawberry-slice", "candle", "cookie", "flower"]);
+const CAKE_SLOT_COUNT = 5;
+
+function isValidCakeRecipe(base, toppings) {
+  if (!CAKE_BASE_IDS.has(base)) return false;
+  if (!Array.isArray(toppings) || toppings.length !== CAKE_SLOT_COUNT) return false;
+  return toppings.every((t) => CAKE_TOPPING_IDS.has(t));
+}
+
+async function handleCakesApi(req, res, action) {
+  if (action === "list") {
+    // read-only, no auth needed — same LAN-trust level as leaderboards' "top"
+    const url = new URL(req.url, "http://localhost");
+    const limit = Math.max(1, Math.min(100, parseInt(url.searchParams.get("limit"), 10) || 30));
+    sendJson(res, 200, { ok: true, cakes: cakes.slice(-limit).reverse() });
+    return;
+  }
+
+  if (req.method !== "POST") { sendJson(res, 405, { ok: false, msg: "Method not allowed." }); return; }
+  let body;
+  try {
+    body = await readJsonBody(req, 4 * 1024);
+  } catch (e) {
+    sendJson(res, 400, { ok: false, msg: "Bad request." });
+    return;
+  }
+  const key = typeof body.key === "string" ? body.key.trim().toLowerCase() : "";
+  const passwordHash = typeof body.passwordHash === "string" ? body.passwordHash : "";
+  const entry = profiles[key];
+  if (!entry || !isNonEmptyString(passwordHash, 200) || entry.passwordHash !== passwordHash) {
+    sendJson(res, 200, { ok: false, msg: "Wrong password." });
+    return;
+  }
+
+  if (action === "publish") {
+    if (!isValidCakeRecipe(body.base, body.toppings)) {
+      sendJson(res, 400, { ok: false, msg: "That cake recipe doesn't look right." });
+      return;
+    }
+    cakes.push({
+      id: crypto.randomUUID(),
+      name: entry.name,
+      base: body.base,
+      toppings: body.toppings,
+      createdAt: Date.now(),
+    });
+    // trim from the front (oldest) — cakes.slice(-limit) above already reads
+    // newest-first from the tail, so this keeps that same "recent" meaning
+    if (cakes.length > MAX_STORED_CAKES) cakes.splice(0, cakes.length - MAX_STORED_CAKES);
+    saveCakesToDisk();
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  sendJson(res, 404, { ok: false, msg: "Unknown action." });
+}
+
+// ---------- Friends (follow-based, mutual = friends) ----------
+async function handleFriendsApi(req, res, action) {
+  if (req.method !== "POST") { sendJson(res, 405, { ok: false, msg: "Method not allowed." }); return; }
+  let body;
+  try {
+    body = await readJsonBody(req, 8 * 1024);
+  } catch (e) {
+    sendJson(res, 400, { ok: false, msg: "Bad request." });
+    return;
+  }
+  const key = typeof body.key === "string" ? body.key.trim().toLowerCase() : "";
+  const passwordHash = typeof body.passwordHash === "string" ? body.passwordHash : "";
+  const entry = profiles[key];
+  if (!entry || !isNonEmptyString(passwordHash, 200) || entry.passwordHash !== passwordHash) {
+    sendJson(res, 200, { ok: false, msg: "Wrong password." });
+    return;
+  }
+
+  if (action === "follow") {
+    const targetName = typeof body.targetName === "string" ? body.targetName.trim() : "";
+    const targetKey = targetName.toLowerCase();
+    if (!targetKey || targetKey === key) { sendJson(res, 200, { ok: false, msg: "Enter a valid name." }); return; }
+    if (!profiles[targetKey]) { sendJson(res, 200, { ok: false, msg: "No profile with that name." }); return; }
+    entry.following = entry.following || [];
+    if (!entry.following.includes(targetKey)) {
+      entry.following.push(targetKey);
+      entry.updatedAt = Date.now();
+      saveProfilesToDisk();
+    }
+    sendJson(res, 200, { ok: true, following: entry.following });
+    return;
+  }
+
+  if (action === "unfollow") {
+    const targetKey = typeof body.targetKey === "string" ? body.targetKey.trim().toLowerCase() : "";
+    entry.following = (entry.following || []).filter((k) => k !== targetKey);
+    entry.updatedAt = Date.now();
+    saveProfilesToDisk();
+    sendJson(res, 200, { ok: true, following: entry.following });
+    return;
+  }
+
+  if (action === "list") {
+    const followingKeys = entry.following || [];
+    const followerKeys = Object.entries(profiles)
+      .filter(([otherKey, other]) => otherKey !== key && (other.following || []).includes(key))
+      .map(([otherKey]) => otherKey);
+    const unionKeys = Array.from(new Set([...followingKeys, ...followerKeys]));
+    const rows = unionKeys.map((otherKey) => {
+      const other = profiles[otherKey];
+      if (!other) return null;
+      const isFollowing = followingKeys.includes(otherKey);
+      const isFollower = followerKeys.includes(otherKey);
+      const mutual = isFollowing && isFollower;
+      // presence/room-code only ever shown to mutual friends — a one-way
+      // follow sees nothing beyond "you follow them", by design (following
+      // is unilateral/no-consent, so surfacing live location to someone who
+      // was never followed back would be a real privacy leak)
+      const online = mutual ? presenceByKey.has(otherKey) : false;
+      const roomCode = mutual ? findRoomForProfileKey(otherKey) : null;
+      return { key: otherKey, name: other.name, avatar: other.avatar || null, isFollowing, isFollower, online, roomCode };
+    }).filter(Boolean);
+    sendJson(res, 200, { ok: true, friends: rows });
+    return;
+  }
+
+  sendJson(res, 404, { ok: false, msg: "Unknown action." });
+}
+
+// ---------- Private page viewer: the search home's search box fetches a
+// page server-side and shows it, rather than the visitor's own browser
+// contacting the site directly (no referrer/analytics JS reaches the target
+// site, and it never lands in the browser's own history). This is NOT a
+// general-purpose proxy — it's deliberately narrow: text/HTML pages only, a
+// handful of well-known IP ranges are refused up front, and every hop of
+// every redirect gets the same check, not just the first request. ----------
+const FETCH_TIMEOUT_MS = 10000;
+const FETCH_MAX_BYTES = 5 * 1024 * 1024; // 5MB — plenty for an HTML page, not for someone using this as a free file host
+const FETCH_MAX_REDIRECTS = 5;
+// A real, current browser UA — not a made-up one identifying this as a
+// "viewer" tool. Sites like Google sniff the User-Agent to decide which
+// build to serve; an unrecognized UA gets their legacy/degraded fallback
+// (confirmed live: this is exactly why Google looked like an old-OS-era
+// page and Maps rendered without its sidebar — both are Google's real
+// fallback UI for a browser it doesn't recognize, not a rendering bug here).
+const FETCH_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
+
+// Refuses loopback/private/link-local/reserved ranges — the link-local block
+// (169.254.0.0/16) matters as much as the private ones: it's where cloud
+// providers serve instance-metadata endpoints (credentials, etc.) from, and
+// it's also where this box's OWN server could be reached from if someone
+// pointed the viewer at itself.
+function isPrivateOrReservedIP(ip) {
+  if (net.isIPv4(ip)) {
+    const [a, b] = ip.split(".").map(Number);
+    if (a === 0 || a === 10 || a === 127) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 169 && b === 254) return true;
+    if (a >= 224) return true; // multicast + reserved
+    return false;
+  }
+  if (net.isIPv6(ip)) {
+    const lower = ip.toLowerCase();
+    if (lower === "::1" || lower === "::") return true;
+    if (/^fe[89ab]/.test(lower)) return true; // fe80::/10 link-local
+    if (/^f[cd]/.test(lower)) return true; // fc00::/7 unique local
+    if (lower.startsWith("::ffff:")) {
+      const v4 = lower.slice(7);
+      if (net.isIPv4(v4)) return isPrivateOrReservedIP(v4);
+    }
+    return false;
+  }
+  return true; // couldn't even parse it as an IP — refuse rather than guess
+}
+
+// Resolves the hostname and checks EVERY address it comes back with (a
+// hostname can round-robin across several) — and critically, hands the
+// already-validated address straight to the request itself (via `lookup`
+// below) instead of letting Node re-resolve DNS a second time when it
+// connects. Re-resolving would reopen exactly the gap this exists to close:
+// a hostname that resolves somewhere safe at check-time and somewhere
+// internal a moment later (DNS rebinding).
+function resolveSafeAddress(hostname) {
+  return new Promise((resolve, reject) => {
+    dns.lookup(hostname, { all: true, verbatim: true }, (err, addresses) => {
+      if (err) { reject(new Error("Could not resolve that host.")); return; }
+      if (!addresses.length) { reject(new Error("Could not resolve that host.")); return; }
+      const unsafe = addresses.find((a) => isPrivateOrReservedIP(a.address));
+      if (unsafe) { reject(new Error("That address isn't allowed.")); return; }
+      resolve(addresses[0]);
+    });
+  });
+}
+
+async function fetchPageOnce(targetUrl) {
+  let parsed;
+  try {
+    parsed = new URL(targetUrl);
+  } catch (e) {
+    throw new Error("That doesn't look like a valid URL.");
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("Only http:// and https:// links can be viewed.");
+  }
+  const safeAddress = await resolveSafeAddress(parsed.hostname);
+  const client = parsed.protocol === "https:" ? https : http;
+
+  return new Promise((resolve, reject) => {
+    const req = client.request(
+      {
+        protocol: parsed.protocol,
+        hostname: parsed.hostname,
+        port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
+        path: parsed.pathname + parsed.search,
+        method: "GET",
+        headers: { "User-Agent": FETCH_USER_AGENT, Accept: "text/html,*/*;q=0.8" },
+        timeout: FETCH_TIMEOUT_MS,
+        // pin the connection to the address already checked above, so Node
+        // never performs its own separate (unchecked) DNS lookup
+        lookup: (_hostname, _options, callback) => callback(null, safeAddress.address, safeAddress.family),
+        // Node's newer Happy-Eyeballs dual-stack connect path
+        // (lookupAndConnectMultiple) doesn't correctly handle a custom
+        // `lookup` using the classic 3-arg (err, address, family) callback
+        // above — it throws "Invalid IP address: undefined" from deep inside
+        // net.js even though the address/family passed in are both valid
+        // (confirmed directly: reproduced in isolation, fixed by this flag
+        // alone). Force the legacy single-address connect path instead,
+        // which that callback shape is actually designed for.
+        autoSelectFamily: false,
+      },
+      (res) => {
+        const status = res.statusCode || 0;
+        if (status >= 300 && status < 400 && res.headers.location) {
+          res.resume();
+          resolve({ redirect: new URL(res.headers.location, targetUrl).toString() });
+          return;
+        }
+        const contentType = res.headers["content-type"] || "";
+        const chunks = [];
+        let total = 0;
+        res.on("data", (chunk) => {
+          total += chunk.length;
+          if (total > FETCH_MAX_BYTES) {
+            req.destroy(new Error("That page is too large to view here."));
+            return;
+          }
+          chunks.push(chunk);
+        });
+        res.on("end", () => {
+          resolve({ status, contentType, body: Buffer.concat(chunks).toString("utf8"), finalUrl: targetUrl });
+        });
+      },
+    );
+    req.on("timeout", () => req.destroy(new Error("Timed out reaching that page.")));
+    req.on("error", (e) => reject(e));
+    req.end();
+  });
+}
+
+async function fetchPagePrivately(startUrl) {
+  let current = startUrl;
+  for (let hop = 0; hop <= FETCH_MAX_REDIRECTS; hop += 1) {
+    const result = await fetchPageOnce(current);
+    if (result.redirect) {
+      if (hop === FETCH_MAX_REDIRECTS) throw new Error("Too many redirects.");
+      current = result.redirect;
+      continue;
+    }
+    return result;
+  }
+  throw new Error("Too many redirects.");
+}
+
+// Scripts now run (sandbox="allow-scripts", see index.html's #pageViewFrame)
+// — most real sites (Google, YouTube, DuckDuckGo, ...) render blank without
+// them, since their content is JS-rendered rather than present in the raw
+// HTML. Deliberately NOT combined with allow-same-origin: a script-enabled
+// frame that also shared the hub's own origin could reach into the hub's
+// own localStorage/DOM (a well-known sandbox-escape combination) — without
+// allow-same-origin, fetched-page scripts run in a fully isolated, opaque
+// origin that can't touch anything of ours, only make their own direct
+// requests (same as any other real webpage's scripts do). One narrow thing
+// still worth stripping: a meta-refresh tag would otherwise auto-navigate
+// the frame the instant it loads, before the URL bar or anything else here
+// even has a chance to reflect it.
+function stripActiveContent(html) {
+  return html.replace(/<meta[^>]+http-equiv=["']?refresh["']?[^>]*>/gi, "");
+}
+
+// Opaque-origin frames (no allow-same-origin) don't just leave document.cookie/
+// localStorage/sessionStorage empty the way a real "cookies blocked" browser
+// setting would — they THROW on every access. Plenty of real sites' own boot
+// scripts read one of these unconditionally, with no try/catch, expecting at
+// worst an empty value — so instead of degrading gracefully, the uncaught
+// exception kills their whole script before it ever renders anything
+// (confirmed live: this is exactly why DuckDuckGo stayed blank while Google
+// didn't — DDG's boot script hits document.cookie first thing, uncaught).
+// Shimmed to behave like the "blocked" case sites actually expect: cookie
+// reads/writes silently no-op, storage is a real (if page-lifetime-only,
+// unshared) Storage-like object instead of a hole where one should be.
+//
+// This script also keeps every navigation private, not just the first page:
+// once the visitor clicks a link or submits a GET form, that navigation
+// would otherwise happen directly (no allow-same-origin means the hub can't
+// reach in from outside to intercept it) — going straight to the real site,
+// unshimmed and unproxied, and hitting this exact same cookie-exception
+// blank-page problem all over again with nothing here to fix it. But THIS
+// script runs INSIDE the fetched page's own document, so it can safely
+// catch those events same-document (no special permission needed for that)
+// and hand the resolved URL back to the hub via postMessage — which works
+// across the sandbox boundary by design, unlike reaching in from outside —
+// so the hub can re-fetch it through the same private proxy and this same
+// shim/base treatment applies wherever the visitor clicks next too.
+function buildCompatShim(hubOrigin) {
+  return `<script>(function(){
+  try {
+    Object.defineProperty(document, "cookie", { get: function () { return ""; }, set: function () {}, configurable: true });
+  } catch (e) {}
+  function memoryStorage() {
+    var data = Object.create(null);
+    return {
+      getItem: function (k) { return Object.prototype.hasOwnProperty.call(data, k) ? data[k] : null; },
+      setItem: function (k, v) { data[k] = String(v); },
+      removeItem: function (k) { delete data[k]; },
+      clear: function () { data = Object.create(null); },
+      key: function (i) { return Object.keys(data)[i] ?? null; },
+      get length() { return Object.keys(data).length; },
+    };
+  }
+  try { Object.defineProperty(window, "localStorage", { value: memoryStorage(), configurable: true }); } catch (e) {}
+  try { Object.defineProperty(window, "sessionStorage", { value: memoryStorage(), configurable: true }); } catch (e) {}
+
+  var HUB_ORIGIN = ${JSON.stringify(hubOrigin)};
+  function relay(url) {
+    try { window.parent.postMessage({ source: "mimi-private-browser", type: "navigate", url: url }, HUB_ORIGIN); } catch (e) {}
+  }
+  document.addEventListener("click", function (e) {
+    var link = e.target && e.target.closest && e.target.closest("a[href]");
+    if (!link) return;
+    var raw = link.getAttribute("href");
+    if (!raw || raw.indexOf("#") === 0 || raw.indexOf("javascript:") === 0 || raw.indexOf("mailto:") === 0 || raw.indexOf("tel:") === 0) return;
+    var target;
+    try { target = new URL(raw, document.baseURI).toString(); } catch (err) { return; }
+    e.preventDefault();
+    e.stopPropagation();
+    relay(target);
+  }, true);
+  // Google's own search box navigates via JS (window.open) rather than a
+  // plain form submit or link click — confirmed live: this is exactly why
+  // searching opened Google's real results in a genuine new browser tab
+  // (allowed since the frame is sandboxed with allow-popups) instead of
+  // staying inside this private viewer. Route it through the same relay
+  // as clicks/forms instead of ever letting a real tab open.
+  try {
+    window.open = function (url) {
+      if (url) {
+        try { relay(new URL(url, document.baseURI).toString()); } catch (e) {}
+      }
+      // A real window.open() always returns a Window reference (or null only
+      // on failure) — plenty of sites' own scripts assume success and call
+      // something on it right after (.focus(), .document, ...) with no null
+      // check. Returning bare null there throws, and since this runs during
+      // the page's own boot script, that uncaught exception can kill the
+      // rest of that script block — including whatever renders the page
+      // itself — which is exactly why navigation looked like it silently
+      // stopped working entirely rather than just not opening a real tab.
+      // A harmless dummy object absorbs those calls instead of throwing.
+      var dummy = {};
+      try {
+        return new Proxy(dummy, { get: function () { return function () {}; }, set: function () { return true; } });
+      } catch (e) {
+        return dummy;
+      }
+    };
+  } catch (e) {}
+  document.addEventListener("submit", function (e) {
+    var form = e.target;
+    if (!form || !form.tagName || form.tagName !== "FORM") return;
+    var method = (form.getAttribute("method") || "get").toLowerCase();
+    if (method !== "get") return; // no way to relay a POST body through a simple GET-based proxy — let it submit directly instead
+    var target;
+    try { target = new URL(form.getAttribute("action") || "", document.baseURI); } catch (err) { return; }
+    try {
+      new FormData(form).forEach(function (value, key) {
+        if (typeof value === "string") target.searchParams.set(key, value);
+      });
+    } catch (err) {}
+    e.preventDefault();
+    e.stopPropagation();
+    relay(target.toString());
+  }, true);
+})();</script>`;
+}
+
+// A relative URL inside srcdoc content resolves against the HUB's own
+// origin, not the real site's — there's no other base for it to use.
+// Confirmed live: this is exactly why Google's own search form 404'd
+// against this server instead of reaching Google at all (its action="/search"
+// resolved to https://localhost:1764/search), and why fonts/images/stylesheets
+// referenced by relative path were all missing. A <base> tag fixes both, and
+// is also what the shim's own link/form resolution (document.baseURI) relies
+// on to compute the real absolute URL to relay back to the hub.
+function injectCompatShim(html, baseUrl, hubOrigin) {
+  const baseTag = baseUrl ? `<base href="${baseUrl.replace(/"/g, "&quot;")}">` : "";
+  const inject = baseTag + buildCompatShim(hubOrigin);
+  if (/<head[^>]*>/i.test(html)) {
+    return html.replace(/<head[^>]*>/i, (tag) => tag + inject);
+  }
+  return inject + html;
+}
+
+async function handleFetchPageApi(req, res) {
+  if (req.method !== "POST") {
+    sendJson(res, 405, { ok: false, msg: "Method not allowed." });
+    return;
+  }
+  let body;
+  try {
+    body = await readJsonBody(req, 4 * 1024);
+  } catch (e) {
+    sendJson(res, 400, { ok: false, msg: "Bad request." });
+    return;
+  }
+  const rawUrl = typeof body.url === "string" ? body.url.trim() : "";
+  if (!isNonEmptyString(rawUrl, 2000)) {
+    sendJson(res, 400, { ok: false, msg: "Enter a URL." });
+    return;
+  }
+  // a bare "example.com" (no scheme) is the common case typed into a search
+  // box — assume https rather than making that a dead end
+  const withScheme = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+  try {
+    const result = await fetchPagePrivately(withScheme);
+    const hostHeader = req.headers.host || "localhost";
+    const hubOrigin = `${hasCert ? "https" : "http"}://${hostHeader}`;
+    sendJson(res, 200, {
+      ok: true,
+      url: result.finalUrl,
+      contentType: result.contentType,
+      html: injectCompatShim(stripActiveContent(result.body), result.finalUrl, hubOrigin),
+    });
+  } catch (e) {
+    sendJson(res, 200, { ok: false, msg: e.message || "Couldn't load that page." });
+  }
+}
+
+function requestHandler(req, res) {
+  const urlPath = req.url.split("?")[0];
+  // Static files (the page itself, scripts, images) are deliberately not
+  // gated — a real visitor's normal page load makes a couple dozen of
+  // those in a second and none of them touch profiles.json or leaderboards
+  // in a way worth throttling. Only /api/ ever reaches this check.
+  if (urlPath.startsWith("/api/") && !checkRateLimit(req, res, "general", RATE_LIMIT_GENERAL)) return;
+  const apiMatch = urlPath.match(/^\/api\/profiles\/([a-z-]+)$/);
+  if (apiMatch) {
+    handleProfilesApi(req, res, apiMatch[1]).catch(() => {
+      sendJson(res, 500, { ok: false, msg: "Server error." });
+    });
+    return;
+  }
+  const leaderboardsMatch = urlPath.match(/^\/api\/leaderboards\/([a-z-]+)$/);
+  if (leaderboardsMatch) {
+    handleLeaderboardsApi(req, res, leaderboardsMatch[1]).catch(() => {
+      sendJson(res, 500, { ok: false, msg: "Server error." });
+    });
+    return;
+  }
+  const friendsMatch = urlPath.match(/^\/api\/friends\/([a-z-]+)$/);
+  if (friendsMatch) {
+    handleFriendsApi(req, res, friendsMatch[1]).catch(() => {
+      sendJson(res, 500, { ok: false, msg: "Server error." });
+    });
+    return;
+  }
+  const cakesMatch = urlPath.match(/^\/api\/cakes\/([a-z-]+)$/);
+  if (cakesMatch) {
+    handleCakesApi(req, res, cakesMatch[1]).catch(() => {
+      sendJson(res, 500, { ok: false, msg: "Server error." });
+    });
+    return;
+  }
+  if (urlPath === "/api/fetch-page") {
+    handleFetchPageApi(req, res).catch(() => {
+      sendJson(res, 500, { ok: false, msg: "Server error." });
+    });
+    return;
+  }
+  serveStatic(req, res);
+}
+
+const server = hasCert
+  ? https.createServer({ cert: fs.readFileSync(CERT_PATH), key: fs.readFileSync(KEY_PATH) }, requestHandler)
+  : http.createServer(requestHandler);
+const wss = new WebSocketServer({ server, path: "/mp" });
+// ws's own constructor (given an external `server`) attaches its own
+// 'error' listener to that server and re-emits it here on `wss` — so a
+// listen failure (e.g. EADDRINUSE) fires ws's forwarding listener first
+// (registered here, before the app's own handler further below), which
+// synchronously re-throws as unhandled on THIS emitter since nothing
+// listens for 'error' on it specifically. That throw aborts the event
+// entirely before the server's own listener (down by server.listen) ever
+// runs, no matter what order those two are written in below — confirmed
+// live: this exact interaction was masking the app's own graceful
+// port-in-use handling and crashing with Node's raw default trace instead.
+wss.on("error", () => {});
+
+// rooms: Map<roomCode, Map<clientId, { ws, name, color, avatar, profileKey }>>
+const rooms = new Map();
+
+// Friends "who's online" presence — reuses this same /mp WebSocket path
+// rather than adding a second one, since it's already this app's one
+// always-available real-time channel and a second WebSocketServer instance
+// would just duplicate the connection-lifecycle scaffolding below for no
+// real benefit. A Set (not a single ws) per key, so multiple tabs/devices
+// signed into the same profile all count as "online" until the last one
+// disconnects. Populated by profiles.js opening a lightweight connection on
+// page load — distinct from the per-room sockets Kart Circuit/play-together
+// only open while actively hosting/joining a race.
+const presenceByKey = new Map();
+
+// Used by the Friends "list" action to show a mutual friend's current room
+// code, if they're hosting/in one — reuses the existing room system rather
+// than any new invite/notification plumbing.
+function findRoomForProfileKey(key) {
+  for (const [code, room] of rooms) {
+    for (const player of room.values()) {
+      if (player.profileKey === key) return code;
+    }
+  }
+  return null;
+}
+
+// same cap as the profile picture upload itself (MAX_AVATAR_LEN above) —
+// host/join messages carry a racer's avatar straight from their signed-in
+// profile, so it's already been through that size check once, but a
+// malformed/spoofed client shouldn't be able to hand every other racer in
+// the room an oversized payload either
+function sanitizeAvatar(value) {
+  if (typeof value !== "string" || !value.startsWith("data:image/") || value.length > MAX_AVATAR_LEN) return null;
+  return value;
+}
+
+function makeRoomCode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code;
+  do {
+    code = Array.from({ length: 4 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
+  } while (rooms.has(code));
+  return code;
+}
+
+function roomPlayerList(room) {
+  return Array.from(room.entries()).map(([id, p]) => ({ id, name: p.name, color: p.color, avatar: p.avatar || null }));
+}
+
+function broadcast(room, payload, exceptId) {
+  const data = JSON.stringify(payload);
+  room.forEach((peer, id) => {
+    if (id === exceptId) return;
+    if (peer.ws.readyState === peer.ws.OPEN) peer.ws.send(data);
+  });
+}
+
+let nextClientId = 1;
+
+wss.on("connection", (ws) => {
+  const clientId = String(nextClientId++);
+  let joinedRoom = null;
+  let roomCode = null;
+  let presenceKey = null;
+
+  ws.on("message", (raw) => {
+    let msg;
+    try {
+      msg = JSON.parse(raw);
+    } catch (e) {
+      return;
+    }
+
+    if (msg.type === "presence-hello") {
+      const pKey = typeof msg.key === "string" ? msg.key.trim().toLowerCase() : "";
+      const pHash = typeof msg.passwordHash === "string" ? msg.passwordHash : "";
+      const pEntry = profiles[pKey];
+      if (!pEntry || pEntry.passwordHash !== pHash) return; // silently ignore — not a real error the caller needs to see
+      presenceKey = pKey;
+      if (!presenceByKey.has(pKey)) presenceByKey.set(pKey, new Set());
+      presenceByKey.get(pKey).add(ws);
+      return;
+    }
+
+    if (msg.type === "host") {
+      roomCode = makeRoomCode();
+      joinedRoom = new Map();
+      rooms.set(roomCode, joinedRoom);
+      joinedRoom.set(clientId, { ws, name: msg.name || "Player", color: msg.color || "#ffd166", avatar: sanitizeAvatar(msg.avatar), profileKey: typeof msg.profileKey === "string" ? msg.profileKey : null });
+      ws.send(JSON.stringify({ type: "joined", id: clientId, room: roomCode, isHost: true, players: roomPlayerList(joinedRoom) }));
+      return;
+    }
+
+    if (msg.type === "join") {
+      const code = String(msg.room || "").toUpperCase();
+      const room = rooms.get(code);
+      if (!room) {
+        ws.send(JSON.stringify({ type: "joinError", reason: "Room not found." }));
+        return;
+      }
+      if (room.size >= ROOM_MAX_PLAYERS) {
+        ws.send(JSON.stringify({ type: "joinError", reason: "Room is full." }));
+        return;
+      }
+      joinedRoom = room;
+      roomCode = code;
+      const avatar = sanitizeAvatar(msg.avatar);
+      room.set(clientId, { ws, name: msg.name || "Player", color: msg.color || "#53e0ff", avatar, profileKey: typeof msg.profileKey === "string" ? msg.profileKey : null });
+      ws.send(JSON.stringify({ type: "joined", id: clientId, room: roomCode, isHost: false, players: roomPlayerList(room) }));
+      broadcast(room, { type: "playerJoined", id: clientId, name: msg.name || "Player", color: msg.color || "#53e0ff", avatar }, clientId);
+      return;
+    }
+
+    if (!joinedRoom) return;
+
+    if (msg.type === "state") {
+      msg.id = clientId;
+      broadcast(joinedRoom, msg, clientId);
+      return;
+    }
+
+    if (msg.type === "raceStart") {
+      msg.id = clientId;
+      broadcast(joinedRoom, msg, clientId);
+      return;
+    }
+
+    if (msg.type === "chat") {
+      msg.id = clientId;
+      broadcast(joinedRoom, msg, clientId);
+      return;
+    }
+
+    if (msg.type === "rtc-offer" || msg.type === "rtc-answer" || msg.type === "rtc-ice") {
+      const target = joinedRoom.get(msg.to);
+      if (target && target.ws.readyState === target.ws.OPEN) {
+        msg.from = clientId;
+        target.ws.send(JSON.stringify(msg));
+      }
+      return;
+    }
+  });
+
+  ws.on("close", () => {
+    if (presenceKey && presenceByKey.has(presenceKey)) {
+      const set = presenceByKey.get(presenceKey);
+      set.delete(ws);
+      if (set.size === 0) presenceByKey.delete(presenceKey);
+    }
+    if (!joinedRoom || !roomCode) return;
+    joinedRoom.delete(clientId);
+    broadcast(joinedRoom, { type: "playerLeft", id: clientId }, clientId);
+    if (joinedRoom.size === 0) {
+      rooms.delete(roomCode);
+    }
+  });
+});
+
+// periodic sweep for abandoned empty rooms (defensive; close handler already covers the normal path)
+setInterval(() => {
+  rooms.forEach((room, code) => {
+    if (room.size === 0) rooms.delete(code);
+  });
+}, ROOM_TTL_MS);
+
+// Without this, a taken port crashes with Node's default "Unhandled 'error'
+// event" dump — fine for a dev server started by hand in a terminal (the
+// stack trace is right there), but fatal for the packaged desktop app: it
+// runs this same file as a background child process with no visible
+// console, so that crash was previously just a silent, instant, unexplained
+// close (confirmed live: this exact EADDRINUSE was the real cause behind a
+// "flash then closes" report — a leftover dev server instance had the port
+// held). A distinct, deliberately-chosen exit code (not a default 1) lets
+// electron/main.js recognize this specific case and show an actual message
+// instead of quitting with nothing shown at all.
+const PORT_IN_USE_EXIT_CODE = 98;
+server.on("error", (err) => {
+  if (err.code === "EADDRINUSE") {
+    console.error(`Port ${PORT} is already in use — is another copy of this already running?`);
+    process.exit(PORT_IN_USE_EXIT_CODE);
+  }
+  console.error("Server failed to start:", err.message);
+  process.exit(1);
+});
+
+server.listen(PORT, () => {
+  const scheme = hasCert ? "https" : "http";
+  const wsScheme = hasCert ? "wss" : "ws";
+  console.log(`Mini Games server running at ${scheme}://localhost:${PORT}`);
+  console.log(`Multiplayer relay at ${wsScheme}://localhost:${PORT}/mp`);
+  if (!hasCert) {
+    console.log("No TLS cert found in certs/ — voice chat (getUserMedia) will only work on http://localhost, not over the LAN.");
+  }
+});
+
+// The desktop app's update feed (see package.json's build.publish) needs a
+// plain-HTTP way to reach this same content even when the main listener
+// above is HTTPS. Two separate downloaders hit this feed and neither goes
+// through Chromium (whose secure-context rules are why the main listener
+// uses TLS at all in the first place): the NSIS "web installer" bootstrapper
+// downloads its payload via Windows' own WinINet, which refuses the
+// self-signed dev cert outright (confirmed live — its real error for a
+// failed TLS handshake is a misleading "internet connection unavailable"
+// dialog); and electron-updater's own background download runs in the main
+// process after the one-shot NODE_TLS_REJECT_UNAUTHORIZED bypass around
+// checkForUpdates() (see electron/main.js) has already been restored, so it
+// would hit the same wall. This feed is just prebuilt installer bytes, not
+// sensitive data, so serving it over plain HTTP on a second port sidesteps
+// cert trust entirely without weakening TLS anywhere else.
+if (hasCert) {
+  const UPDATE_FEED_HTTP_PORT = Number(PORT) + 1;
+  http.createServer(requestHandler).listen(UPDATE_FEED_HTTP_PORT, () => {
+    console.log(`Update feed also served over plain HTTP at http://localhost:${UPDATE_FEED_HTTP_PORT}/downloads/updates/`);
+  });
+}

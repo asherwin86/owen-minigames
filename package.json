@@ -1,0 +1,86 @@
+{
+  "name": "mini_games",
+  "version": "1.0.28",
+  "description": "51 Mimi Games \u2014 a hub of 80 mini-games, playable solo, split-screen, or over a wireless LAN room.",
+  "main": "electron/main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "electron:start": "electron .",
+    "electron:build:linux": "electron-builder --linux AppImage deb",
+    "electron:build:win": "electron-builder --win nsis",
+    "electron:build:mac": "electron-builder --mac zip"
+  },
+  "keywords": [],
+  "homepage": "https://51mimigames.local",
+  "author": {
+    "name": "51 Mimi Games",
+    "email": "noreply@51mimigames.local"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "@simplewebauthn/server": "^13.3.2",
+    "electron-updater": "^6.8.9",
+    "ws": "^8.21.1"
+  },
+  "devDependencies": {
+    "electron": "^43.4.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.mimigames.hub",
+    "productName": "51 Mimi Games",
+    "asar": false,
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "index.html",
+      "css/**/*",
+      "js/**/*",
+      "games/**/*",
+      "server.js",
+      "electron/main.js",
+      "package.json",
+      "!**/*.md"
+    ],
+    "extraMetadata": {
+      "main": "electron/main.js"
+    },
+    "publish": {
+      "provider": "generic",
+      "url": "http://localhost:1766/downloads/updates/",
+      "channel": "latest"
+    },
+    "toolsets": {
+      "winCodeSign": "1.1.0",
+      "wine": "1.0.1"
+    },
+    "linux": {
+      "icon": "electron/build/icon.png",
+      "category": "Game",
+      "target": [
+        "AppImage",
+        "deb"
+      ]
+    },
+    "win": {
+      "icon": "electron/build/icon.ico",
+      "target": [
+        "nsis-web"
+      ],
+      "signExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "differentialPackage": false,
+      "include": "electron/build/installer.nsh"
+    },
+    "mac": {
+      "icon": "electron/build/icon.png",
+      "target": [
+        "zip"
+      ]
+    }
+  }
+}

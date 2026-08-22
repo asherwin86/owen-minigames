@@ -1,0 +1,283 @@
+<!doctype html>
+<!-- Copyright (c) Meta Platforms, Inc. and affiliates. -->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>IWE 2.0</title>
+    <style>
+      /* Unified dark frosted-glass styling (see @iwer/devui) */
+      :root {
+        --substrate: #101013;
+        --hairline: rgba(61, 61, 63, 0.7);
+        --inset: #161618;
+        --text: #ededed;
+        --text2: #9c9c9c;
+        --accent: #2d7ff9;
+        --accent-press: #1c6fe0;
+        --pin: #f5b94f;
+        --pin-tint: rgba(245, 185, 79, 0.13);
+        --code: #ceced2;
+        --sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        padding: 48px;
+        font: 14px/1.5 var(--sans);
+        color: var(--text);
+        background: var(--substrate);
+      }
+      .card {
+        width: 100%;
+        max-width: 720px;
+        background: #17171b;
+        border: 1px solid var(--hairline);
+        border-radius: 14px;
+        padding: 32px;
+        box-shadow:
+          0 16px 50px rgba(0, 0, 0, 0.5),
+          inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      }
+      h1 {
+        font-size: 24px;
+        font-weight: 700;
+        line-height: 1.12;
+        letter-spacing: 0;
+        margin: 0;
+      }
+      .masthead {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+      .app-icon {
+        width: 52px;
+        height: 52px;
+        border-radius: 12px;
+        flex: none;
+        box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+      }
+      .eyebrow {
+        margin: 1px 0 0;
+        color: var(--text2);
+        line-height: 1.25;
+      }
+      .divider {
+        height: 1px;
+        background: var(--hairline);
+        margin: 22px 0;
+      }
+      section {
+        border: none;
+        padding: 0;
+      }
+      h2 {
+        font-size: 16px;
+        font-weight: 600;
+        margin: 0 0 10px;
+        display: flex;
+        align-items: center;
+      }
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--accent);
+        box-shadow: 0 0 8px var(--accent);
+        margin-right: 8px;
+      }
+      p {
+        margin: 0 0 8px;
+        color: var(--text2);
+        line-height: 1.55;
+      }
+      code {
+        font-family: var(--mono);
+        font-size: 0.9em;
+        background: var(--inset);
+        border: 1px solid var(--hairline);
+        padding: 1px 6px;
+        border-radius: 6px;
+        color: var(--code);
+      }
+      strong {
+        color: var(--text);
+        font-weight: 600;
+      }
+      .hint {
+        position: relative;
+        margin: 0 0 20px;
+        padding: 13px 14px 13px 17px;
+        background: var(--pin-tint);
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      .hint::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 3px;
+        background: var(--pin);
+      }
+      .hint strong {
+        display: block;
+        margin-bottom: 3px;
+      }
+      .hint p {
+        margin: 0;
+      }
+      .toolbar-guide {
+        display: grid;
+        grid-template-columns: minmax(280px, 1fr) minmax(190px, 0.62fr);
+        gap: 14px;
+        align-items: center;
+        margin: 14px 0 22px;
+      }
+      .toolbar-guide img {
+        display: block;
+        width: 100%;
+        max-width: 430px;
+        height: auto;
+        border: 1px solid var(--hairline);
+        border-radius: 12px;
+        background: var(--inset);
+      }
+      .toolbar-guide ol {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 9px;
+        margin: 0;
+        padding-left: 20px;
+      }
+      .toolbar-guide li {
+        color: var(--text2);
+        padding-right: 0;
+      }
+      button#done {
+        font: 500 14px var(--sans);
+        margin-top: 8px;
+        padding: 9px 16px;
+        background: var(--accent);
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        box-shadow: 0 2px 10px rgba(45, 127, 249, 0.3);
+      }
+      button#done:hover {
+        background: var(--accent-press);
+      }
+      @media (max-width: 720px) {
+        body {
+          padding: 24px;
+        }
+        .card {
+          padding: 24px;
+        }
+        .toolbar-guide ol {
+          grid-template-columns: 1fr;
+        }
+        .toolbar-guide {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <div class="masthead">
+        <img
+          class="app-icon"
+          src="../icons/iwer-logo.svg"
+          alt=""
+          aria-hidden="true"
+        />
+        <div>
+          <h1>Immersive Web Emulator 2.0</h1>
+          <p class="eyebrow">A more explicit workflow for WebXR emulation.</p>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="hint" role="note">
+        <strong>Pin IWE to your toolbar</strong>
+        <p>
+          The toolbar button is the control center for IWE 2.0: enable or
+          disable WebXR emulation for the current site, open page-level
+          controls, and connect AI agents. If you do not see it, open Chrome's
+          Extensions menu and pin Immersive Web Emulator.
+        </p>
+      </div>
+      <div class="toolbar-guide" aria-label="Toolbar pin and activation guide">
+        <img
+          src="../icons/pin-toolbar-guide.gif"
+          alt="Animated guide showing IWE being pinned to the Chrome toolbar, enabled for the current WebXR page, and opened from the toolbar menu."
+        />
+        <ol>
+          <li><strong>Pin IWE</strong> from Chrome's Extensions menu.</li>
+          <li>
+            <strong>Enable the site</strong> by clicking the pinned toolbar
+            button.
+          </li>
+          <li>
+            <strong>Use the menu</strong> to stop emulation, open controls, or
+            connect AI agents.
+          </li>
+        </ol>
+      </div>
+      <section>
+        <h2>Activate emulation per site</h2>
+        <p>
+          IWE 2.0 is intentionally opt-in for the page you are testing. Instead
+          of treating WebXR emulation as always on everywhere, use the pinned
+          toolbar button to activate the current site, closer to explicit
+          test-session tools like SpectreJS.
+        </p>
+        <p>
+          This keeps normal browsing untouched and makes it clear which page is
+          currently running with the emulator.
+        </p>
+      </section>
+      <div class="divider"></div>
+      <section>
+        <h2>What goes where?</h2>
+        <p>
+          <strong>Toolbar button:</strong> turn emulation on or off for the
+          current site and connect AI agents.
+        </p>
+        <p>
+          <strong>Page overlay:</strong> live headset, controller, hand, and
+          button-mapping controls.
+        </p>
+        <p>
+          <strong>DevTools WebXR panel:</strong> persistent defaults such as
+          device, environment, input mode, stereo rendering, IPD, and FOV-Y.
+        </p>
+        <p>
+          Settings reset in 2.0. Set your defaults once in the panel and use the
+          overlay for live page control.
+        </p>
+      </section>
+      <div class="divider"></div>
+      <section>
+        <h2><span class="dot"></span>Drive it with an AI agent</h2>
+        <p>
+          Open the pinned toolbar button for agent setup. Point a coding agent
+          at the local <code>@iwer/extension-bridge</code> MCP server and it can
+          drive an emulated WebXR tab after you approve the on-page
+          <strong>Allow</strong> prompt.
+        </p>
+      </section>
+      <button id="done">Got it</button>
+    </main>
+    <script src="whats-new.min.js"></script>
+  </body>
+</html>
