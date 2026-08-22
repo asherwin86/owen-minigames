@@ -4940,15 +4940,27 @@ function updateRacer(racer, dt) {
         { x: racer.x, y: racer.y },
         startSide.x,
     );
-    const isInsideFinishLane = finishCross && finishCross.y > finishLine.y1 && finishCross.y < finishLine.y2;
 
     // lapArmed is only set after visiting every checkpoint, so it alone gates the
     // lap. (Requiring checkpointIndex === 0 here too was a bug: the finish gate
     // sits after checkpoint 0, so the index was already 1 at every real crossing.)
+    //
+    // This used to also require the crossing to land within finishLine.y1/y2 —
+    // the decorative banner's span, which every map draws noticeably narrower
+    // than the actual road (e.g. Neon Loop: a 95-unit lane on a 184-unit-wide
+    // road). A normal racing line along either edge of the track — wide entry,
+    // tight apex, drafting past a bot — crosses the gate's x outside that
+    // narrow strip and was silently rejected, leaving lapArmed still true
+    // until some later lap happened to cross through the center. That's
+    // exactly the "one lap doesn't count, but it's not lost — it catches up a
+    // lap later" bug reported live. lapArmed + the forward-direction check
+    // already fully gate a real lap (the checkpoint loop can't be faked, and
+    // this is the one gate crossing that state permits), so the extra lane
+    // restriction wasn't protecting anything — just rejecting legitimate
+    // crossings near the shoulders. Dropped.
     if (
         racer.lapArmed &&
         finishCross?.direction === 1 &&
-        isInsideFinishLane &&
         racer.gateLockTimer <= 0
     ) {
         racer.lap += 1;
