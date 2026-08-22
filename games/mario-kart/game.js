@@ -6967,6 +6967,7 @@ let xrHudLastWaiting = null;
 let xrHudLastPaused = null;
 let xrHudLastNotice = null;
 let xrHudLastMpKey = null;
+let xrHudLastCountdown = null;
 let xrMenuButtonWasPressed = false;
 let xrWheelMesh = null;
 let xrSupported = false;
@@ -7121,13 +7122,23 @@ function updateXRHud(player) {
     // click no longer starts their own race (see startRace's mpConnected
     // guard), so the HUD needs to say why nothing happened.
     const mpKey = waiting && !raceOver ? `${mpConnected}|${mpIsHost}|${mpRoomCodeValue}` : null;
-    if (waiting === xrHudLastWaiting && pausedNow === xrHudLastPaused && player.lap === xrHudLastLap && player.place === xrHudLastPlace && notice === xrHudLastNotice && mpKey === xrHudLastMpKey) return;
+    // The "3, 2, 1, GO!" countdown (drawRaceStartCountdown, the flat 2D-canvas
+    // version) never reaches the headset either, for the same reason as the
+    // states above — it's drawn onto `ctx`, which VR never blits from. Unlike
+    // those, it wasn't covered when this HUD was first added, so entering VR
+    // and starting a race jumped straight from "waiting" to a bare lap/place
+    // readout with no countdown at all (confirmed live). Same mirror pattern:
+    // reuse raceCountdown/raceGoTimer, the exact state drawRaceStartCountdown
+    // already gates on.
+    const countdownLabel = !waiting && !pausedNow && (raceCountdown > 0 || raceGoTimer > 0) ? (raceCountdown > 0 ? Math.ceil(raceCountdown) : "GO") : null;
+    if (waiting === xrHudLastWaiting && pausedNow === xrHudLastPaused && player.lap === xrHudLastLap && player.place === xrHudLastPlace && notice === xrHudLastNotice && mpKey === xrHudLastMpKey && countdownLabel === xrHudLastCountdown) return;
     xrHudLastWaiting = waiting;
     xrHudLastPaused = pausedNow;
     xrHudLastLap = player.lap;
     xrHudLastPlace = player.place;
     xrHudLastNotice = notice;
     xrHudLastMpKey = mpKey;
+    xrHudLastCountdown = countdownLabel;
     xrHudCtx.clearRect(0, 0, xrHudCanvas.width, xrHudCanvas.height);
     xrHudCtx.fillStyle = "rgba(10, 15, 26, 0.55)";
     xrHudCtx.fillRect(0, 0, xrHudCanvas.width, xrHudCanvas.height);
@@ -7172,6 +7183,11 @@ function updateXRHud(player) {
         }
     } else if (pausedNow) {
         fitText("PAUSED — click thumbstick to resume", 48);
+    } else if (countdownLabel !== null) {
+        const isGo = countdownLabel === "GO";
+        xrHudCtx.fillStyle = isGo ? "#53e0ff" : "#ffd166";
+        xrHudCtx.font = `700 ${isGo ? 72 : 64}px Space Grotesk, sans-serif`;
+        xrHudCtx.fillText(isGo ? "GO!" : String(countdownLabel), xrHudCanvas.width / 2, xrHudCanvas.height / 2);
     } else if (notice) {
         fitText(notice, 44);
     } else {
