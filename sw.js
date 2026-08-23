@@ -11,7 +11,13 @@
 // so a new version is simply a new URL — a cache miss that fetches fresh
 // and caches under its own key, leaving the old entry unused. No extra
 // version-comparison logic needed here.
-const CACHE_NAME = "mimi-cache-v1";
+// Bumped once here: index.html itself (unlike the scripts it references) has
+// no cache-busting query string of its own, so a content change to it — like
+// today's new/renumbered <script> tags — wouldn't otherwise evict the
+// already-cached copy under its same URL. Bumping this forces every cached
+// entry (index.html included) to be dropped and re-fetched fresh on next
+// activation, same one-time reset any real cache-key change needs.
+const CACHE_NAME = "mimi-cache-v2";
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
