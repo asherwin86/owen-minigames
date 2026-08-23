@@ -1,6 +1,17 @@
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
-const STATIC_MODE = window.MIMI_STATIC_MODE === true;
+// See js/profiles.js for why a configured Server address override also
+// counts as "not static mode" — it's a real backend even on a page loaded
+// from GitHub Pages. Reads the same localStorage key directly rather than
+// via serverWsBaseOverride() below since only presence-of-override matters
+// here, not its ws:// form.
+const STATIC_MODE = window.MIMI_STATIC_MODE === true && !(() => {
+    try {
+        return (localStorage.getItem("mimiServerOverride") || "").trim();
+    } catch (e) {
+        return "";
+    }
+})();
 
 // object-fit:contain on <canvas> is unreliable across browsers — canvas
 // doesn't consistently expose an intrinsic aspect ratio for it the way

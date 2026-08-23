@@ -4,7 +4,10 @@
 // pointer moves, and key presses are forwarded back and replayed on the host.
 // 2P hotseat games become playable across computers; 1P games become co-op.
 (function () {
-  const STATIC_MODE = window.MIMI_STATIC_MODE === true;
+  // See js/profiles.js for why a configured Server address override also
+  // counts as "not static mode" — it's a real backend even on a page
+  // loaded from GitHub Pages.
+  const STATIC_MODE = window.MIMI_STATIC_MODE === true && !window.MimiGames?.getServerBase();
   const gameStage = document.getElementById("gameStage");
   const gameView = document.getElementById("gameView");
   const menuView = document.getElementById("menuView");

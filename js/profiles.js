@@ -8,7 +8,13 @@
 // enough for anything that actually matters.
 (function () {
   const SESSION_KEY = "mimiActiveSession";
-  const STATIC_MODE = window.MIMI_STATIC_MODE === true;
+  // A configured Server address override (Settings) means there's a real
+  // backend to talk to even when the page itself was loaded from the
+  // static GitHub Pages preview — without this check, that override would
+  // correctly redirect the actual fetch/WebSocket calls but every one of
+  // these gates would still show the "needs the full hosted version"
+  // notice regardless, since they only ever checked the hostname.
+  const STATIC_MODE = window.MIMI_STATIC_MODE === true && !window.MimiGames?.getServerBase();
 
   // whitelist of localStorage keys considered "settings" — extend this list
   // as more games grow persisted preferences worth backing up. Deliberately

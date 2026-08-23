@@ -1,5 +1,8 @@
 (function () {
-  const STATIC_MODE = window.MIMI_STATIC_MODE === true;
+  // See js/profiles.js for why a configured Server address override also
+  // counts as "not static mode" — it's a real backend even on a page
+  // loaded from GitHub Pages.
+  const STATIC_MODE = window.MIMI_STATIC_MODE === true && !window.MimiGames?.getServerBase();
   const grid = document.getElementById("gameGrid");
   const topbar = document.getElementById("topbar");
   const searchHomeView = document.getElementById("searchHomeView");
