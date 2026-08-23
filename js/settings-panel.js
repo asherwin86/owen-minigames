@@ -207,6 +207,53 @@
   syncThemeUI();
   body?.appendChild(themeSection);
 
+  // Server address override — see js/engine.js's getServerBase/getServerWsBase
+  // for how this gets used. Exists so an installed app (Android, desktop)
+  // doesn't need rebuilding every time the backend's address changes; type
+  // the current one in here and reload instead. Empty = use whatever origin
+  // the page itself was loaded from, same as before this setting existed.
+  const SERVER_OVERRIDE_KEY = "mimiServerOverride";
+  const serverSection = document.createElement("div");
+  serverSection.style.marginBottom = "18px";
+  const serverLabel = document.createElement("p");
+  serverLabel.className = "pt-status";
+  serverLabel.style.marginBottom = "10px";
+  serverLabel.innerHTML = "<strong>Server address</strong> — where this app looks for accounts, leaderboards, and multiplayer. Leave blank to use the site it was loaded from. Only needed if that changes without the app being reinstalled (e.g. a temporary tunnel URL).";
+  serverSection.appendChild(serverLabel);
+
+  const serverRow = document.createElement("div");
+  serverRow.style.cssText = "display:flex; gap:8px; flex-wrap:wrap; align-items:center;";
+  const serverInput = document.createElement("input");
+  serverInput.type = "text";
+  serverInput.placeholder = "https://example.com (blank = default)";
+  serverInput.style.cssText = "flex:1; min-width:220px; padding:8px 10px; border-radius:8px; border:1px solid var(--border); background:var(--panel); color:var(--text);";
+  try { serverInput.value = localStorage.getItem(SERVER_OVERRIDE_KEY) || ""; } catch (e) { /* storage unavailable */ }
+  const serverSaveBtn = document.createElement("button");
+  serverSaveBtn.type = "button";
+  serverSaveBtn.className = "btn";
+  serverSaveBtn.textContent = "Save & Reload";
+  const serverStatus = document.createElement("p");
+  serverStatus.className = "pt-status";
+  serverStatus.style.cssText = "margin-top:8px; min-height: 1.2em;";
+  serverSaveBtn.addEventListener("click", () => {
+    const value = serverInput.value.trim().replace(/\/+$/, "");
+    if (value && !/^https?:\/\/.+/i.test(value)) {
+      serverStatus.textContent = "Needs to start with http:// or https://";
+      return;
+    }
+    try {
+      if (value) localStorage.setItem(SERVER_OVERRIDE_KEY, value);
+      else localStorage.removeItem(SERVER_OVERRIDE_KEY);
+    } catch (e) {
+      serverStatus.textContent = "Couldn't save — storage unavailable.";
+      return;
+    }
+    location.reload();
+  });
+  serverRow.append(serverInput, serverSaveBtn);
+  serverSection.append(serverRow, serverStatus);
+  body?.appendChild(serverSection);
+
   function isOpen() {
     return !overlay.classList.contains("hidden");
   }

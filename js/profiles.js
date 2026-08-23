@@ -262,7 +262,7 @@
   async function apiCall(action, body, base) {
     if (STATIC_MODE) return { ok: false, msg: "This needs the full hosted version — not available on the static GitHub Pages preview." };
     try {
-      const res = await fetch(`/api/${base || "profiles"}/${action}`, {
+      const res = await fetch(`${window.MimiGames?.getServerBase() ?? ""}/api/${base || "profiles"}/${action}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -286,8 +286,9 @@
   function connectPresence() {
     if (!session?.key || !session?.passwordHash) return;
     if (presenceSocket && (presenceSocket.readyState === WebSocket.OPEN || presenceSocket.readyState === WebSocket.CONNECTING)) return;
-    const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-    presenceSocket = new WebSocket(`${protocol}//${location.host}/mp`);
+    const wsBase = window.MimiGames?.getServerWsBase();
+    const wsUrl = wsBase ? `${wsBase}/mp` : `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/mp`;
+    presenceSocket = new WebSocket(wsUrl);
     presenceSocket.addEventListener("open", () => {
       presenceSocket.send(JSON.stringify({ type: "presence-hello", key: session.key, passwordHash: session.passwordHash }));
     });
@@ -1522,7 +1523,7 @@
     getLeaderboardTop: async (gameId, limit) => {
       if (STATIC_MODE) return { ok: false, msg: "This needs the full hosted version — not available on the static GitHub Pages preview." };
       try {
-        const res = await fetch(`/api/leaderboards/top?gameId=${encodeURIComponent(gameId)}&limit=${limit || 50}`);
+        const res = await fetch(`${window.MimiGames?.getServerBase() ?? ""}/api/leaderboards/top?gameId=${encodeURIComponent(gameId)}&limit=${limit || 50}`);
         return await res.json();
       } catch (e) {
         return { ok: false, msg: "Couldn't reach the hub's server." };
@@ -1538,7 +1539,7 @@
     getCakeFeed: async (limit) => {
       if (STATIC_MODE) return { ok: false, msg: "This needs the full hosted version — not available on the static GitHub Pages preview." };
       try {
-        const res = await fetch(`/api/cakes/list?limit=${limit || 30}`);
+        const res = await fetch(`${window.MimiGames?.getServerBase() ?? ""}/api/cakes/list?limit=${limit || 30}`);
         return await res.json();
       } catch (e) {
         return { ok: false, msg: "Couldn't reach the hub's server." };

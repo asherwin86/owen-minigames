@@ -370,7 +370,7 @@
       return;
     }
     try {
-      const resp = await fetch("/api/fetch-page", {
+      const resp = await fetch(`${window.MimiGames?.getServerBase() ?? ""}/api/fetch-page`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),

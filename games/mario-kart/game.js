@@ -8656,9 +8656,23 @@ function mpBusy() {
         || (mpSocket && (mpSocket.readyState === WebSocket.OPEN || mpSocket.readyState === WebSocket.CONNECTING));
 }
 
+// Same override the hub's Settings panel writes (js/settings-panel.js,
+// js/engine.js's getServerWsBase) — read directly rather than via
+// window.parent.MimiGames since this page also runs standalone (the vrsim
+// harness, direct navigation), not only inside the hub's iframe.
+function serverWsBaseOverride() {
+    try {
+        const base = (localStorage.getItem("mimiServerOverride") || "").trim().replace(/\/+$/, "");
+        return base ? base.replace(/^http/, "ws") : "";
+    } catch (e) {
+        return "";
+    }
+}
+
 function mpConnect(onOpen) {
-    const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-    mpSocket = new WebSocket(`${protocol}//${location.host}/mp`);
+    const wsBase = serverWsBaseOverride();
+    const wsUrl = wsBase ? `${wsBase}/mp` : `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/mp`;
+    mpSocket = new WebSocket(wsUrl);
     mpSocket.addEventListener("open", () => onOpen(), { once: true });
     mpSocket.addEventListener("message", (event) => {
         try {

@@ -339,8 +339,9 @@
 
   // --- connection lifecycle ---
   function connect(onOpen) {
-    const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-    socket = new WebSocket(`${protocol}//${location.host}/mp`);
+    const wsBase = window.MimiGames?.getServerWsBase();
+    const wsUrl = wsBase ? `${wsBase}/mp` : `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/mp`;
+    socket = new WebSocket(wsUrl);
     socket.addEventListener("open", () => onOpen(), { once: true });
     socket.addEventListener("message", (event) => {
       try {

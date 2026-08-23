@@ -8,6 +8,32 @@
     registry.push(def);
   }
 
+  // Server address override — lets a single build (an Android app, a
+  // static-hosted preview, anything) point its live API/WebSocket calls at a
+  // different backend than the origin it was loaded from, entered by hand in
+  // Settings. Exists specifically so an installed app doesn't need to be
+  // rebuilt every time the backend's address changes (a home-network IP, a
+  // temporary tunnel URL, ...) — the app shell stays the same, only this
+  // localStorage value changes, and a reload picks it up. Empty/unset means
+  // "use the same origin the page was loaded from", unchanged from before
+  // this existed.
+  const SERVER_OVERRIDE_KEY = "mimiServerOverride";
+  function getServerOverride() {
+    try {
+      return (localStorage.getItem(SERVER_OVERRIDE_KEY) || "").trim().replace(/\/+$/, "");
+    } catch (e) {
+      return "";
+    }
+  }
+  function getServerBase() {
+    return getServerOverride();
+  }
+  function getServerWsBase() {
+    const base = getServerOverride();
+    if (!base) return "";
+    return base.replace(/^http/, "ws");
+  }
+
   function shuffle(arr, rng) {
     const r = rng || Math.random;
     for (let i = arr.length - 1; i > 0; i--) {
@@ -264,6 +290,8 @@
     makeContext,
     playSound,
     vibrate,
+    getServerBase,
+    getServerWsBase,
     showOverlay(opts) {
       const overlay = document.getElementById("overlay");
       document.getElementById("overlayTitle").textContent = opts.title || "";
