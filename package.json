@@ -1,6 +1,6 @@
 {
   "name": "mini_games",
-  "version": "1.0.37",
+  "version": "1.0.38",
   "description": "51 Mimi Games \u2014 a hub of 80 mini-games, playable solo, split-screen, or over a wireless LAN room.",
   "main": "electron/main.js",
   "scripts": {
@@ -47,8 +47,9 @@
       "main": "electron/main.js"
     },
     "publish": {
-      "provider": "generic",
-      "url": "http://localhost:1766/downloads/updates/",
+      "provider": "github",
+      "owner": "asherwin86",
+      "repo": "owen-minigames",
       "channel": "latest"
     },
     "toolsets": {

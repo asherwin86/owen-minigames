@@ -211,23 +211,12 @@ async function createWindow() {
   windowLoaded = true;
 }
 
-// The update feed (see package.json's build.publish) is this same WSL2 dev
-// machine's own server, over the same self-signed cert waitForServer()
-// above already trusts for its own probe requests. electron-updater's HTTP
-// client is a separate code path in the main process (not the renderer, so
-// the certificate-error bypass above doesn't cover it) — scope the same
-// trust decision to just the moment of checking, then restore it, rather
-// than weakening TLS validation for the process as a whole.
+// The update feed (see package.json's build.publish) is a real public GitHub
+// Releases endpoint with a normally-trusted cert, so no TLS bypass is needed
+// here (unlike the old self-signed-cert dev-machine feed this replaced).
 function checkForUpdates() {
   if (!app.isPackaged) return; // no installed app to update, and no app-update.yml bundled in dev anyway
-  const previous = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-  try {
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-    autoUpdater.checkForUpdates();
-  } finally {
-    if (previous === undefined) delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-    else process.env.NODE_TLS_REJECT_UNAUTHORIZED = previous;
-  }
+  autoUpdater.checkForUpdates();
 }
 
 autoUpdater.on("error", (err) => {
