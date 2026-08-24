@@ -4,6 +4,13 @@
 
   const CHANGELOG = [
     {
+      date: "2026-08-24",
+      entries: [
+        { emoji: "🔧", time: "00:01", title: "Fixed: every Download App link 404ing on the live site", desc: "downloads/ (where the actual app builds live) was never part of what deploys to Render — it's in .gitignore (some builds are 300MB+, over GitHub's normal file-size limit), so the live site's copy of that folder was simply empty. Every Download App link — Windows, macOS, Linux, Android phone/TV, and now VR — was quietly a dead link there, even though the same button worked fine locally. Fixed by hosting the actual builds as GitHub Release assets instead and pointing the menu at those, so they resolve the same way no matter where the page itself is served from." },
+        { emoji: "🥽", time: "00:00", title: "Meta Quest VR app added to Download App", desc: "The VR build (same hub, packaged for Quest, already being sideloaded manually) is now a real option in the Download App menu alongside Windows/Mac/Linux/Android phone/TV — grab the .apk straight from the site instead of needing it handed to you separately." },
+      ],
+    },
+    {
       date: "2026-08-22",
       entries: [
         { emoji: "🔧", time: "00:20", title: "Fixed: Server address setting was ignored by sign-in, leaderboards, and multiplayer", desc: "The new Server address override (just added) correctly redirected the actual network calls to the backend you typed in — but every place that decides whether to *show* the sign-in form, leaderboards, or Play Together instead of a \"needs the full hosted version\" notice was still only checking whether the page loaded from the static GitHub Pages preview, with no idea an override existed. So setting a real backend address didn't actually unlock anything in the UI — it kept showing the static-preview notices regardless. Fixed: a configured Server address now counts as having a real backend, same as being on a fully self-hosted site." },

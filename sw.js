@@ -17,7 +17,7 @@
 // already-cached copy under its same URL. Bumping this forces every cached
 // entry (index.html included) to be dropped and re-fetched fresh on next
 // activation, same one-time reset any real cache-key change needs.
-const CACHE_NAME = "mimi-cache-v2";
+const CACHE_NAME = "mimi-cache-v3";
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
