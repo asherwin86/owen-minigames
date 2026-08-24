@@ -83,6 +83,38 @@ function serveStatic(req, res) {
   });
 }
 
+// --- Optional durable store (Upstash Redis over its REST API) ---
+// Render's free-tier disk is ephemeral: data/*.json resets on every redeploy
+// and whenever the service wakes from sleep (confirmed live 2026-08-24 — an
+// account created earlier the same day was simply gone). When these two env
+// vars are set, profiles/leaderboards/cakes are mirrored to a free Upstash
+// Redis database instead of relying on that disk; local disk is still
+// written too (see saveProfilesToDisk etc.) purely as a fast local cache/
+// fallback for plain LAN hosting, where there's no ephemeral-disk problem
+// and no Upstash env vars will be set at all.
+const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL || "";
+const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || "";
+const UPSTASH_ENABLED = Boolean(UPSTASH_URL && UPSTASH_TOKEN);
+if (UPSTASH_ENABLED) console.log("Upstash Redis configured — profiles/leaderboards/cakes will persist across redeploys.");
+
+async function upstashCmd(cmd) {
+  const res = await fetch(UPSTASH_URL, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, "Content-Type": "application/json" },
+    body: JSON.stringify(cmd),
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data.result;
+}
+async function upstashGetJson(key, fallback) {
+  const raw = await upstashCmd(["GET", key]);
+  return raw === null || raw === undefined ? fallback : JSON.parse(raw);
+}
+async function upstashSetJson(key, value) {
+  await upstashCmd(["SET", key, JSON.stringify(value)]);
+}
+
 // --- Profiles API: name+password accounts so settings can be signed into
 // from any device on the LAN, not just the browser that created them. Stored
 // as a JSON file on disk (this is a small local hub, not a real database).
@@ -95,7 +127,14 @@ function serveStatic(req, res) {
 // itself has always been fine
 const PROFILES_PATH = path.join(process.env.MIMI_DATA_DIR || ROOT, "data", "profiles.json");
 
-function loadProfilesFromDisk() {
+async function loadProfilesFromDisk() {
+  if (UPSTASH_ENABLED) {
+    try {
+      return await upstashGetJson("mimi:profiles", {});
+    } catch (e) {
+      console.error(`Upstash profiles load failed (${e.message}) — falling back to local disk this boot.`);
+    }
+  }
   try {
     return JSON.parse(fs.readFileSync(PROFILES_PATH, "utf8"));
   } catch (e) {
@@ -112,7 +151,7 @@ function loadProfilesFromDisk() {
     return {};
   }
 }
-function saveProfilesToDisk() {
+async function saveProfilesToDisk() {
   try {
     fs.mkdirSync(path.dirname(PROFILES_PATH), { recursive: true });
     // Keep one prior copy before every overwrite, so an in-memory `profiles`
@@ -125,8 +164,19 @@ function saveProfilesToDisk() {
   } catch (e) {
     console.error("Failed to persist profiles.json:", e.message);
   }
+  if (UPSTASH_ENABLED) {
+    try {
+      await upstashSetJson("mimi:profiles", profiles);
+    } catch (e) {
+      console.error("Failed to persist profiles to Upstash:", e.message);
+    }
+  }
 }
-const profiles = loadProfilesFromDisk(); // { [key]: { name, passwordHash, dev, settings, updatedAt, createdAt, email, recoveryCodeHash, passkeys, avatar, kartColor, following, achievements } }
+// Populated by bootstrapData() before the server starts listening — see the
+// bottom of this file. `let`, not `const`, since loading is async (may hit
+// Upstash over the network) but everything below closes over this same
+// binding and only ever runs after that load has finished.
+let profiles = {}; // { [key]: { name, passwordHash, dev, settings, updatedAt, createdAt, email, recoveryCodeHash, passkeys, avatar, kartColor, following, achievements } }
 // Signup used to trust body.dev outright — any client could POST
 // {dev: true} (not even through the UI checkbox, a bare API call was
 // enough) and get dev-only capabilities (the Admin panel, and now the
@@ -144,13 +194,16 @@ const MAX_AVATAR_LEN = 60000;
 // Any profile created before this field existed has no createdAt at all —
 // backfill from updatedAt (its oldest known timestamp) once, in memory, so
 // age-based achievements work without a separate migration script. Persists
-// naturally the next time saveProfilesToDisk() runs for any reason.
-Object.values(profiles).forEach((entry) => {
-  if (!entry.createdAt) entry.createdAt = entry.updatedAt || Date.now();
-  if (!entry.following) entry.following = [];
-  if (!entry.achievements) entry.achievements = { unlocked: {} };
-  if (entry.kartColor === undefined) entry.kartColor = null;
-});
+// naturally the next time saveProfilesToDisk() runs for any reason. Called
+// from bootstrapData() once profiles has actually been loaded.
+function backfillProfileDefaults() {
+  Object.values(profiles).forEach((entry) => {
+    if (!entry.createdAt) entry.createdAt = entry.updatedAt || Date.now();
+    if (!entry.following) entry.following = [];
+    if (!entry.achievements) entry.achievements = { unlocked: {} };
+    if (entry.kartColor === undefined) entry.kartColor = null;
+  });
+}
 
 // Kept in sync by hand with racerPalette in games/mario-kart/game.js — no
 // shared module between client and server today (same as every other
@@ -167,7 +220,14 @@ const KART_COLOR_SWATCHES = [
 // comment for why that matters. ---
 const LEADERBOARDS_PATH = path.join(process.env.MIMI_DATA_DIR || ROOT, "data", "leaderboards.json");
 
-function loadLeaderboardsFromDisk() {
+async function loadLeaderboardsFromDisk() {
+  if (UPSTASH_ENABLED) {
+    try {
+      return await upstashGetJson("mimi:leaderboards", {});
+    } catch (e) {
+      console.error(`Upstash leaderboards load failed (${e.message}) — falling back to local disk this boot.`);
+    }
+  }
   try {
     return JSON.parse(fs.readFileSync(LEADERBOARDS_PATH, "utf8"));
   } catch (e) {
@@ -179,7 +239,7 @@ function loadLeaderboardsFromDisk() {
     return {};
   }
 }
-function saveLeaderboardsToDisk() {
+async function saveLeaderboardsToDisk() {
   try {
     fs.mkdirSync(path.dirname(LEADERBOARDS_PATH), { recursive: true });
     if (fs.existsSync(LEADERBOARDS_PATH)) {
@@ -189,9 +249,16 @@ function saveLeaderboardsToDisk() {
   } catch (e) {
     console.error("Failed to persist leaderboards.json:", e.message);
   }
+  if (UPSTASH_ENABLED) {
+    try {
+      await upstashSetJson("mimi:leaderboards", leaderboards);
+    } catch (e) {
+      console.error("Failed to persist leaderboards to Upstash:", e.message);
+    }
+  }
 }
 // { [gameId]: { [profileKey]: { name, avatar, value, updatedAt } } }
-const leaderboards = loadLeaderboardsFromDisk();
+let leaderboards = {}; // populated by bootstrapData() — see profiles' own `let` comment above
 
 // --- Cake Bakery's shared feed: a single ever-growing-until-capped list of
 // published cakes, same load/save shape (and same "refuse to boot on a
@@ -199,7 +266,14 @@ const leaderboards = loadLeaderboardsFromDisk();
 const CAKES_PATH = path.join(process.env.MIMI_DATA_DIR || ROOT, "data", "cakes.json");
 const MAX_STORED_CAKES = 200;
 
-function loadCakesFromDisk() {
+async function loadCakesFromDisk() {
+  if (UPSTASH_ENABLED) {
+    try {
+      return await upstashGetJson("mimi:cakes", []);
+    } catch (e) {
+      console.error(`Upstash cakes load failed (${e.message}) — falling back to local disk this boot.`);
+    }
+  }
   try {
     return JSON.parse(fs.readFileSync(CAKES_PATH, "utf8"));
   } catch (e) {
@@ -211,7 +285,7 @@ function loadCakesFromDisk() {
     return [];
   }
 }
-function saveCakesToDisk() {
+async function saveCakesToDisk() {
   try {
     fs.mkdirSync(path.dirname(CAKES_PATH), { recursive: true });
     if (fs.existsSync(CAKES_PATH)) {
@@ -221,10 +295,17 @@ function saveCakesToDisk() {
   } catch (e) {
     console.error("Failed to persist cakes.json:", e.message);
   }
+  if (UPSTASH_ENABLED) {
+    try {
+      await upstashSetJson("mimi:cakes", cakes);
+    } catch (e) {
+      console.error("Failed to persist cakes to Upstash:", e.message);
+    }
+  }
 }
 // [{ id, name, base, toppings: [...], createdAt }], newest last on disk —
 // handleCakesApi's own "list" action is what reverses to newest-first
-const cakes = loadCakesFromDisk();
+let cakes = []; // populated by bootstrapData() — see profiles' own `let` comment above
 
 // The server owns sortDir per game — never trusts a client's claimed
 // direction, or a malicious client could submit a terrible score claiming
@@ -1607,45 +1688,61 @@ server.on("error", (err) => {
   process.exit(1);
 });
 
-server.listen(PORT, () => {
-  const scheme = hasCert ? "https" : "http";
-  const wsScheme = hasCert ? "wss" : "ws";
-  console.log(`Mini Games server running at ${scheme}://localhost:${PORT}`);
-  console.log(`Multiplayer relay at ${wsScheme}://localhost:${PORT}/mp`);
-  if (!hasCert) {
-    console.log("No TLS cert found in certs/ — voice chat (getUserMedia) will only work on http://localhost, not over the LAN.");
-  }
-});
-
-// The desktop app's update feed (see package.json's build.publish) needs a
-// plain-HTTP way to reach this same content even when the main listener
-// above is HTTPS. Two separate downloaders hit this feed and neither goes
-// through Chromium (whose secure-context rules are why the main listener
-// uses TLS at all in the first place): the NSIS "web installer" bootstrapper
-// downloads its payload via Windows' own WinINet, which refuses the
-// self-signed dev cert outright (confirmed live — its real error for a
-// failed TLS handshake is a misleading "internet connection unavailable"
-// dialog); and electron-updater's own background download runs in the main
-// process after the one-shot NODE_TLS_REJECT_UNAUTHORIZED bypass around
-// checkForUpdates() (see electron/main.js) has already been restored, so it
-// would hit the same wall. Serving it over plain HTTP on a second port
-// sidesteps cert trust entirely without weakening TLS anywhere else.
-//
-// This same port also turns out to be the one worth pointing a plain-HTTP
-// tunnel (ngrok, localhost.run, etc.) at, since those terminate TLS
-// themselves and expect a plain-HTTP origin behind them — the self-signed
-// main listener above doesn't fit that. Multiplayer needs the /mp relay to
-// come along for that to actually work, so it gets its own WebSocketServer
-// here rather than only living on the main listener; every connection is
-// handed off into the exact same handler/rooms Map as the main one below,
-// so there's no separate relay logic to keep in sync.
-if (hasCert) {
-  const UPDATE_FEED_HTTP_PORT = Number(PORT) + 1;
-  const updateFeedServer = http.createServer(requestHandler);
-  const updateFeedWss = new WebSocketServer({ server: updateFeedServer, path: "/mp" });
-  updateFeedWss.on("error", () => {});
-  updateFeedWss.on("connection", (ws, req) => wss.emit("connection", ws, req));
-  updateFeedServer.listen(UPDATE_FEED_HTTP_PORT, () => {
-    console.log(`Update feed also served over plain HTTP at http://localhost:${UPDATE_FEED_HTTP_PORT}/downloads/updates/`);
-  });
+// Profiles/leaderboards/cakes are loaded here (not at module-load time)
+// since the Upstash path above is a real network call — the server only
+// starts accepting connections once this has actually finished, so nothing
+// downstream ever sees the empty {}/[] a `let` starts life as.
+async function bootstrapData() {
+  profiles = await loadProfilesFromDisk();
+  backfillProfileDefaults();
+  leaderboards = await loadLeaderboardsFromDisk();
+  cakes = await loadCakesFromDisk();
 }
+
+bootstrapData().then(() => {
+  server.listen(PORT, () => {
+    const scheme = hasCert ? "https" : "http";
+    const wsScheme = hasCert ? "wss" : "ws";
+    console.log(`Mini Games server running at ${scheme}://localhost:${PORT}`);
+    console.log(`Multiplayer relay at ${wsScheme}://localhost:${PORT}/mp`);
+    if (!hasCert) {
+      console.log("No TLS cert found in certs/ — voice chat (getUserMedia) will only work on http://localhost, not over the LAN.");
+    }
+  });
+
+  // The desktop app's update feed (see package.json's build.publish) needs a
+  // plain-HTTP way to reach this same content even when the main listener
+  // above is HTTPS. Two separate downloaders hit this feed and neither goes
+  // through Chromium (whose secure-context rules are why the main listener
+  // uses TLS at all in the first place): the NSIS "web installer" bootstrapper
+  // downloads its payload via Windows' own WinINet, which refuses the
+  // self-signed dev cert outright (confirmed live — its real error for a
+  // failed TLS handshake is a misleading "internet connection unavailable"
+  // dialog); and electron-updater's own background download runs in the main
+  // process after the one-shot NODE_TLS_REJECT_UNAUTHORIZED bypass around
+  // checkForUpdates() (see electron/main.js) has already been restored, so it
+  // would hit the same wall. Serving it over plain HTTP on a second port
+  // sidesteps cert trust entirely without weakening TLS anywhere else.
+  //
+  // This same port also turns out to be the one worth pointing a plain-HTTP
+  // tunnel (ngrok, localhost.run, etc.) at, since those terminate TLS
+  // themselves and expect a plain-HTTP origin behind them — the self-signed
+  // main listener above doesn't fit that. Multiplayer needs the /mp relay to
+  // come along for that to actually work, so it gets its own WebSocketServer
+  // here rather than only living on the main listener; every connection is
+  // handed off into the exact same handler/rooms Map as the main one below,
+  // so there's no separate relay logic to keep in sync.
+  if (hasCert) {
+    const UPDATE_FEED_HTTP_PORT = Number(PORT) + 1;
+    const updateFeedServer = http.createServer(requestHandler);
+    const updateFeedWss = new WebSocketServer({ server: updateFeedServer, path: "/mp" });
+    updateFeedWss.on("error", () => {});
+    updateFeedWss.on("connection", (ws, req) => wss.emit("connection", ws, req));
+    updateFeedServer.listen(UPDATE_FEED_HTTP_PORT, () => {
+      console.log(`Update feed also served over plain HTTP at http://localhost:${UPDATE_FEED_HTTP_PORT}/downloads/updates/`);
+    });
+  }
+}).catch((e) => {
+  console.error("Failed to load persisted data — refusing to start:", e.message);
+  process.exit(1);
+});

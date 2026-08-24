@@ -8,9 +8,18 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 22.14.0
+      # Set these two in the Render dashboard (Environment tab) — not stored
+      # here since they're secrets, hence sync: false. Without them, server.js
+      # falls back to plain local disk, which is ephemeral on the free plan
+      # (see the comment below).
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
     # Free tier disk is ephemeral: data/profiles.json, data/leaderboards.json,
     # and data/cakes.json reset on every deploy and whenever the service wakes
     # from sleep. server.js already handles a missing data/ dir by creating it
     # and starting empty (see loadProfilesFromDisk), so this is expected, not
-    # a bug. Add a persistent disk mounted at ./data if accounts need to
-    # survive redeploys.
+    # a bug on its own — mitigated by mirroring the same data to a free
+    # Upstash Redis database instead when UPSTASH_REDIS_REST_URL/TOKEN above
+    # are set, which actually does survive redeploys and sleep/wake cycles.
