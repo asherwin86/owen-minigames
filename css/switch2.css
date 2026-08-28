@@ -1,0 +1,518 @@
+/* ===========================================================================
+   Switch 2 skin — layered on top of css/style.css.
+
+   This file is a *skin*, not a rewrite: style.css still owns the layout and
+   every component's structure, and this file restyles that structure to read
+   like the Nintendo Switch 2 home menu. Kept as its own stylesheet (loaded
+   after style.css) so the whole look is one <link> away from being dropped,
+   and so the diff for "make it look like a Switch" isn't smeared through
+   1200 lines of unrelated rules.
+
+   What the Switch home menu actually looks like, and what each part maps to
+   here:
+     - flat near-black neutral background, no busy gradients        -> body
+     - slim top bar: round user icon left, clock/wifi/battery right -> .topbar
+     - a shelf of big rounded-square game icons, name underneath    -> .game-tile
+     - the selected icon scales up inside a white outline ring      -> :hover etc.
+     - a bottom dock bar of circular system buttons                 -> .switch-dock
+   The dock is the one piece that needs a DOM node style.css never had; the
+   buttons inside it are the *same elements* that used to sit in the top bar,
+   relocated by js/switch-shell.js so every existing click handler still works.
+
+   Themes (js/settings-panel.js) still work: everything here keys off the same
+   --variables that file sets, this just gives them Switch-console values.
+   =========================================================================== */
+
+:root {
+  /* Neutral console charcoal rather than the old blue-black — the Switch's
+     home menu background is a flat dark grey, not a tinted one. */
+  --bg: #16171a;
+  --bg-alt: #1d1e22;
+  --panel: #26272c;
+  --panel-light: #303138;
+  /* Joy-Con Neon Red / Neon Blue, unchanged — these are the real thing and
+     every other stylesheet already keys off them. */
+  --accent: #ff3c28;
+  --accent2: #00c3e3;
+  --accent3: #7ee81c;
+  --text: #ffffff;
+  --text-dim: #b9bcc6;
+  --border: #3a3c44;
+  /* Switch-specific tokens, only used in this file. */
+  --sw-dock-h: 78px;
+  --sw-select: #ffffff;
+  --sw-hairline: rgba(255, 255, 255, .09);
+}
+
+html, body {
+  font-family: "Nunito Sans", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  /* Flat, with only a whisper of vertical falloff — the console's own home
+     screen is deliberately plain so the game icons carry all the color. */
+  background: radial-gradient(120% 90% at 50% 0%, #1e1f24 0%, #16171a 55%, #101114 100%);
+  background-size: auto;
+  animation: none;
+}
+/* The two floating glow blobs read as a phone wallpaper, not a console UI.
+   Kept, but pushed down to the very bottom corners at low opacity so they
+   land where the Joy-Con rails would be rather than washing over the shelf. */
+body::before, body::after {
+  width: 40vw; height: 40vw;
+  max-width: 460px; max-height: 460px;
+  filter: blur(130px);
+  opacity: .16;
+  animation: none;
+}
+body::before { background: var(--accent);  top: auto; bottom: -16vw; left: -10vw; }
+body::after  { background: var(--accent2); top: auto; bottom: -16vw; right: -10vw; }
+
+/* Room for the fixed dock so the last row of icons is never trapped under it. */
+body { padding-bottom: var(--sw-dock-h); }
+
+/* --------------------------------------------------------------------- top bar
+   Switch top bar: user icon hard left, system status hard right, and nothing
+   heavier than a hairline separating it from the shelf. */
+.topbar {
+  background: rgba(30, 31, 36, .92);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--sw-hairline);
+  box-shadow: none;
+  padding: 9px 20px;
+  gap: 10px;
+}
+/* The two-tone Joy-Con line under the bar was a nice nod, but the console's
+   own top bar is a plain hairline — dropped so this reads as the real thing. */
+.topbar::after { display: none; }
+
+/* Three columns that hold their positions: user icon, browse controls, system
+   status. style.css lets the whole bar wrap, which on a busy row drops the
+   status cluster onto a second line at the *left* edge — the opposite corner
+   from where a console puts its clock. The bar itself no longer wraps; the
+   controls group in the middle wraps internally instead, and shrinks (min-width:0)
+   rather than pushing the status off the end. */
+.topbar { flex-wrap: nowrap; }
+.topbar-controls { flex: 1 1 auto; min-width: 0; justify-content: flex-start; }
+.sw-status { flex: 0 0 auto; }
+
+/* The brand button becomes the console's round user icon + name. */
+/* Fixed width, never squeezed: with the bar no longer wrapping, a shrinkable
+   brand breaks "51 Mimi Games" onto two lines as soon as the controls get busy. */
+.brand { gap: 12px; padding: 3px 12px 3px 3px; border-radius: 999px; flex: 0 0 auto; white-space: nowrap; }
+.brand-icon {
+  width: 38px; height: 38px;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  font-size: 1.15rem;
+  /* Switch 2's own logo mark reads as a red-to-blue sweep; the user icon
+     picks that up so the two obvious Joy-Con colors meet in one place. */
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  box-shadow: 0 0 0 2px rgba(255,255,255,.14) inset;
+  animation: none;
+}
+.brand h1 {
+  font-size: 1.02rem;
+  font-weight: 800;
+  letter-spacing: .2px;
+  background: none;
+  -webkit-background-clip: initial;
+  background-clip: initial;
+  color: var(--text);
+  animation: none;
+}
+
+/* Live clock / wifi / battery cluster — the right-hand end of the console's
+   top bar. Markup lives in index.html; js/switch-shell.js keeps it ticking. */
+.sw-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-left: 6px;
+  font-size: .84rem;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: .3px;
+  white-space: nowrap;
+}
+.sw-status svg { display: block; }
+.sw-status-battery { display: flex; align-items: center; gap: 5px; }
+.sw-status-batt-pct { font-size: .78rem; color: var(--text-dim); font-weight: 600; }
+
+#search {
+  background: rgba(255,255,255,.07);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 7px 14px;
+}
+#search:focus { outline: none; border-color: var(--sw-select); background: rgba(255,255,255,.12); }
+
+.cat-chip {
+  background: rgba(255,255,255,.06);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-weight: 700;
+}
+.cat-chip:hover, .cat-chip.pad-hover-target {
+  border-color: var(--sw-select);
+  transform: none;
+  box-shadow: none;
+  background: rgba(255,255,255,.12);
+}
+.cat-chip.active {
+  background: var(--sw-select);
+  color: #16171a;
+  border-color: var(--sw-select);
+}
+
+/* ------------------------------------------------------------------ the shelf
+   80 games won't fit the console's single scrolling row, so the row wraps —
+   but every icon keeps the home menu's proportions: a chunky rounded square
+   with its name printed underneath, never inside. */
+.menu-view { padding: 34px 30px 30px; }
+
+.grid {
+  /* The row gap is the space the names live in, so it has to clear a
+     two-line title (~25px) plus the 7px it sits below the icon — anything
+     tighter and a long name overlaps the next row of icons. */
+  gap: 46px 20px;
+  justify-content: center;
+  padding-bottom: 10px;
+}
+
+.game-tile {
+  flex: 0 0 auto;
+  width: 132px;
+  height: 132px;
+  max-width: none;
+  padding: 0;
+  border: none;
+  border-radius: 20px;
+  overflow: visible;
+  justify-content: center;
+  gap: 0;
+  /* Every icon on a real home menu is its own piece of key art, so each tile
+     gets a deterministic hue off its position in the grid — the shelf reads
+     as a wall of distinct games instead of 80 copies of one grey card. */
+  background:
+    linear-gradient(160deg, rgba(255,255,255,.14), rgba(0,0,0,.18)),
+    hsl(calc(var(--hue, var(--i, 0)) * 47deg) 62% 42%);
+  box-shadow: 0 6px 16px rgba(0,0,0,.45);
+  transition: transform .16s cubic-bezier(.2,.9,.3,1.2), box-shadow .16s ease;
+}
+/* The spinning conic ring and the shimmering LED outline are a gamer-RGB
+   look, not a console one — the Switch marks selection with one clean white
+   ring and nothing else. */
+.game-tile::before { display: none; }
+.game-tile::after  { display: none; }
+
+.game-tile:hover, .game-tile:focus-visible, .game-tile.pad-hover-target {
+  transform: scale(1.13);
+  border-color: transparent;
+  box-shadow:
+    0 0 0 4px var(--sw-select),
+    0 16px 34px rgba(0,0,0,.6);
+  z-index: 3;
+}
+.game-tile:active { transform: scale(1.04); }
+
+.game-tile .tile-emoji {
+  font-size: 3.1rem;
+  filter: drop-shadow(0 3px 5px rgba(0,0,0,.4));
+}
+.game-tile:hover .tile-emoji,
+.game-tile:focus-visible .tile-emoji,
+.game-tile.pad-hover-target .tile-emoji { transform: none; }
+
+/* The name sits *below* the icon, outside the square — the row gap above
+   reserves the space, so it never overlaps the next row. */
+.game-tile .tile-title {
+  position: absolute;
+  top: calc(100% + 7px);
+  left: -12px; right: -12px;
+  font-size: .74rem;
+  font-weight: 700;
+  color: var(--text-dim);
+  line-height: 1.2;
+  /* Two lines is what the row gap above budgets for; the handful of longer
+     titles ellipsize rather than pushing into the next row. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  transition: color .16s ease;
+  pointer-events: none;
+}
+.game-tile:hover .tile-title,
+.game-tile:focus-visible .tile-title,
+.game-tile.pad-hover-target .tile-title { color: var(--text); }
+
+/* Player count / category is detail the console only ever shows on the game's
+   own page, not on the shelf — hidden here, still in the DOM for search. */
+.game-tile .tile-meta { display: none; }
+
+.game-tile .tile-num {
+  top: 7px; left: 8px;
+  background: rgba(0,0,0,.34);
+  color: rgba(255,255,255,.72);
+  font-weight: 700;
+  border-radius: 7px;
+}
+.tile-fav { top: 5px; right: 6px; text-shadow: 0 2px 4px rgba(0,0,0,.5); }
+
+/* Recently-played row: the same icons at a smaller size, on the shelf's own
+   background rather than in cards. */
+.section-heading { font-weight: 800; letter-spacing: .2px; }
+.continue-tile {
+  border: none;
+  border-radius: 16px;
+  background: linear-gradient(160deg, rgba(255,255,255,.14), rgba(0,0,0,.2)), var(--panel);
+  box-shadow: 0 5px 14px rgba(0,0,0,.4);
+}
+.continue-tile:hover, .continue-tile:focus-visible, .continue-tile.pad-hover-target {
+  transform: scale(1.06);
+  border-color: transparent;
+  box-shadow: 0 0 0 3px var(--sw-select), 0 12px 26px rgba(0,0,0,.55);
+}
+
+/* ----------------------------------------------------------- landing / search
+   The three play-mode cards and the app shortcuts get the same icon-square
+   language as the shelf, so stepping between screens never changes vocabulary. */
+.landing-mode-btn,
+.search-home-app-tile {
+  border: none;
+  border-radius: 22px;
+  background: linear-gradient(160deg, rgba(255,255,255,.14), rgba(0,0,0,.22)), var(--panel);
+  box-shadow: 0 8px 22px rgba(0,0,0,.45);
+  transition: transform .16s cubic-bezier(.2,.9,.3,1.2), box-shadow .16s ease;
+}
+.landing-mode-btn:hover, .landing-mode-btn:focus-visible, .landing-mode-btn.pad-hover-target,
+.search-home-app-tile:hover, .search-home-app-tile:focus-visible, .search-home-app-tile.pad-hover-target {
+  transform: scale(1.05);
+  border-color: transparent;
+  box-shadow: 0 0 0 4px var(--sw-select), 0 16px 34px rgba(0,0,0,.6);
+}
+.landing-mode-solo    { background: linear-gradient(160deg, rgba(255,255,255,.16), rgba(0,0,0,.24)), #b52a1c; }
+.landing-mode-multi   { background: linear-gradient(160deg, rgba(255,255,255,.16), rgba(0,0,0,.24)), #0b7f96; }
+.landing-mode-wireless{ background: linear-gradient(160deg, rgba(255,255,255,.16), rgba(0,0,0,.24)), #4a8c1b; }
+.landing-mode-label { font-weight: 800; }
+.landing-mode-desc  { color: rgba(255,255,255,.78); }
+.landing-tagline { font-weight: 700; }
+
+.search-home-bar {
+  border-radius: 999px;
+  border: 1px solid var(--sw-hairline);
+  background: rgba(255,255,255,.07);
+}
+.search-home-bar:focus-within { border-color: var(--sw-select); box-shadow: none; }
+
+/* --------------------------------------------------------------- the dock bar
+   The console's bottom bar: a hairline-topped strip of circular system
+   buttons. These are the exact <button> elements that used to live in the top
+   bar — js/switch-shell.js moves the nodes, it never re-creates them, so
+   every listener bound in app.js/profiles.js/settings-panel.js still fires. */
+.switch-dock {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  height: var(--sw-dock-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 26px;
+  padding: 0 20px;
+  background: rgba(30, 31, 36, .95);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid var(--sw-hairline);
+  z-index: 30;
+}
+
+/* Every dock button collapses to its glyph: font-size:0 kills the button's own
+   label text node, and a per-button ::before supplies the icon. Doing it in CSS
+   (rather than rewriting each button's textContent) leaves the live labels the
+   JS keeps updating — "Music: On", "Music: Off" — intact underneath. */
+.switch-dock .btn,
+.switch-dock .download-app-wrap > .btn {
+  width: 52px; height: 52px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  background: rgba(255,255,255,.08);
+  font-size: 0;
+  display: grid;
+  place-items: center;
+  position: relative;
+  transition: transform .16s cubic-bezier(.2,.9,.3,1.2), box-shadow .16s ease, background .16s ease;
+}
+.switch-dock .btn::before {
+  font-size: 1.42rem;
+  line-height: 1;
+  content: "•";
+}
+#musicBtn::before      { content: "🎵"; }
+#settingsBtn::before   { content: "⚙️"; }
+#updatesBtn::before    { content: "🆕"; }
+#downloadAppBtn::before{ content: "⬇️"; }
+#profileBtn::before    { content: "👤"; }
+#playTogetherBtn::before { content: "📡"; }
+#leaderboardsBtn::before { content: "🏆"; }
+#achievementsBtn::before { content: "🎖️"; }
+#friendsBtn::before      { content: "👥"; }
+
+.switch-dock .btn:hover:not(:disabled),
+.switch-dock .btn:focus-visible,
+.switch-dock .btn.pad-hover-target:not(:disabled) {
+  transform: scale(1.12);
+  background: rgba(255,255,255,.16);
+  box-shadow: 0 0 0 3px var(--sw-select);
+  filter: none;
+}
+
+/* Hovered dock icons name themselves above the bar, the way the console's do. */
+.switch-dock .btn::after {
+  content: attr(data-sw-label);
+  position: absolute;
+  bottom: calc(100% + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 5px 11px;
+  border-radius: 8px;
+  background: rgba(12,13,16,.95);
+  border: 1px solid var(--sw-hairline);
+  font-size: .74rem;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .14s ease;
+}
+.switch-dock .btn:hover::after,
+.switch-dock .btn:focus-visible::after,
+.switch-dock .btn.pad-hover-target::after { opacity: 1; }
+
+/* font-size:0 on the button would swallow the unread-updates dot too. */
+.switch-dock .updates-badge {
+  font-size: .62rem;
+  top: -2px; right: -2px;
+}
+
+/* In the dock the Download menu has to open upward, not downward. */
+.switch-dock .download-app-menu {
+  top: auto;
+  bottom: calc(100% + 14px);
+  right: 50%;
+  transform: translateX(50%);
+  border-radius: 16px;
+}
+
+/* The search-home front page strips the bar down to Music/Settings/Profile.
+   style.css does that with `.topbar.search-mode #updatesBtn` selectors that
+   stop matching once the buttons move out of the top bar, so the dock mirrors
+   the class (js/switch-shell.js) and re-states the rule against itself. */
+.switch-dock.search-mode #updatesBtn,
+.switch-dock.search-mode #playTogetherBtn,
+.switch-dock.search-mode #leaderboardsBtn,
+.switch-dock.search-mode #achievementsBtn,
+.switch-dock.search-mode #friendsBtn,
+.switch-dock.search-mode .download-app-wrap { display: none; }
+
+.footer {
+  padding: 14px 20px 18px;
+  font-size: .74rem;
+  color: rgba(255,255,255,.34);
+}
+
+/* ------------------------------------------------------------------ overlays
+   System menus on the console are flat dark sheets with hairline-separated
+   rows and one accent per screen — not glassy floating cards. */
+.updates-card, .help-card, .overlay-card {
+  border-radius: 22px;
+  background: #24252b;
+  border: 1px solid var(--sw-hairline);
+  box-shadow: 0 30px 80px rgba(0,0,0,.6);
+}
+.updates-header, .help-header { border-bottom: 1px solid var(--sw-hairline); padding-bottom: 14px; }
+.updates-header h2, .help-header h2 { font-weight: 800; }
+.help-close { border-radius: 50%; }
+.help-close:hover, .help-close.pad-hover-target { border-color: var(--sw-select); color: var(--text); }
+
+/* Buttons outside the dock keep their labels but take the console's pill shape. */
+.btn {
+  border-radius: 999px;
+  font-weight: 700;
+  background: rgba(255,255,255,.08);
+  border: 1px solid transparent;
+}
+.btn:hover:not(:disabled), .btn.pad-hover-target:not(:disabled) {
+  background: rgba(255,255,255,.15);
+  border-color: var(--sw-select);
+  transform: none;
+  box-shadow: none;
+}
+.btn.primary { background: var(--accent); border-color: var(--accent); }
+
+.back-btn { border-radius: 999px; font-weight: 700; }
+
+/* --------------------------------------------------------------- light theme
+   The light presets in settings-panel.js flip --bg/--panel to bright values;
+   the few hard-coded dark surfaces above have to follow or they'd stay black
+   on a white page. */
+html.theme-light .topbar { background: var(--panel); }
+html.theme-light .switch-dock {
+  background: var(--panel);
+  border-top-color: rgba(0,0,0,.1);
+}
+html.theme-light .switch-dock .btn { background: rgba(0,0,0,.05); }
+html.theme-light .switch-dock .btn::after { background: #2a2b30; }
+html.theme-light .updates-card,
+html.theme-light .help-card,
+html.theme-light .overlay-card { background: var(--panel); }
+html.theme-light .game-tile .tile-title { color: #3a3c44; }
+/* The search field and category chips sit on a white-ish tint that vanishes
+   against a light page — they need a real surface and edge there. */
+html.theme-light #search,
+html.theme-light .cat-chip {
+  background: rgba(0,0,0,.05);
+  border-color: rgba(0,0,0,.14);
+  color: #24252b;
+}
+html.theme-light .cat-chip:hover,
+html.theme-light .cat-chip.pad-hover-target { background: rgba(0,0,0,.1); border-color: #24252b; }
+html.theme-light .cat-chip.active { background: #24252b; color: #fff; border-color: #24252b; }
+html.theme-light #search:focus { border-color: #24252b; background: rgba(0,0,0,.08); }
+html.theme-light .btn { background: rgba(0,0,0,.05); border-color: rgba(0,0,0,.12); }
+html.theme-light .btn:hover:not(:disabled), html.theme-light .btn.pad-hover-target:not(:disabled) {
+  background: rgba(0,0,0,.1);
+  border-color: #24252b;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .game-tile, .landing-mode-btn, .search-home-app-tile, .switch-dock .btn { transition: none; }
+}
+
+@media (max-width: 720px) {
+  /* Too narrow for three columns side by side — let the bar wrap again, and
+     drop the battery percentage so the cluster still fits on one line. */
+  .topbar { flex-wrap: wrap; }
+  .sw-status-batt-pct { display: none; }
+
+  :root { --sw-dock-h: 68px; }
+  .switch-dock { gap: 14px; }
+  .switch-dock .btn, .switch-dock .download-app-wrap > .btn { width: 46px; height: 46px; }
+  .grid { gap: 40px 14px; }
+  .game-tile { width: 104px; height: 104px; border-radius: 17px; }
+  .game-tile .tile-emoji { font-size: 2.5rem; }
+  .sw-status { font-size: .78rem; gap: 8px; }
+}
+
+/* --------------------------------------------------------------- entry anim
+   style.css's `tile-in` staggers each icon in with a transform, and runs it
+   with `animation-fill-mode: both` — which means the animation keeps owning
+   `transform` after it finishes, and the :hover/:focus scale rules above can
+   never take effect. Same name, opacity only: the stagger still reads, and
+   selection gets `transform` back. */
+@keyframes sw-tile-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.game-tile, .continue-tile { animation-name: sw-tile-in; }
+.continue-tile--last { animation-name: sw-tile-in, pulse-glow; }

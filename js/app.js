@@ -178,6 +178,9 @@
         <span class="tile-meta">${g.players || "1P"} · ${g.category}</span>
       `;
       tile.style.setProperty("--i", filtered.indexOf(g));
+      // Stable per-game icon hue (css/switch2.css) — position in the full
+      // list, so filtering never repaints a game a different colour.
+      tile.style.setProperty("--hue", games.indexOf(g));
       tile.onclick = () => openGame(g);
       const favEl = tile.querySelector(".tile-fav");
       const onToggleFav = (e) => {
