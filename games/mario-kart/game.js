@@ -1204,16 +1204,16 @@ const maps = {
         roadHalfWidth: 96,
         shoulderHalfWidth: 136,
         biome: {
-            skyTop: "#bdeaff", skyMid: "#5fb6e6", skyBottom: "#1c4468",
+            skyTop: "#3aa8e8", skyMid: "#7fcdf2", skyBottom: "#d3efff",
             sunColor: "rgba(255, 244, 200, 0.9)",
-            mountainColor: "rgba(20, 130, 150, 0.6)", mountainStyle: "waves",
-            grassTop: "#2f7a6e", grassBottom: "#184840",
-            hazeTop: "rgba(255,255,255,0.26)", hazeBottom: "rgba(255,255,255,0)",
-            shoulderA: "#2a6b62", shoulderB: "#20554e",
+            mountainColor: "rgba(104, 174, 196, 0.5)", mountainStyle: "waves",
+            grassTop: "#5cbfa4", grassBottom: "#2f8672",
+            hazeTop: "rgba(226,245,255,0.4)", hazeBottom: "rgba(255,255,255,0)",
+            shoulderA: "#45a08e", shoulderB: "#368175",
             // was only ~4 luminance units brighter than the grass — same
             // "reads as a gap between the curb stripes" issue as Neon
             // Loop's palette, just less extreme. Brightened, same hue.
-            roadA: "#576888", roadB: "#4a5776",
+            roadA: "#828a9c", roadB: "#71798b",
             curbA: "#ff6f6f", curbB: "#fff4d2",
             lane: "rgba(255,255,255,0.8)",
             mapBgTop: "#173654", mapBgBottom: "#0c1e30", mapGrass: "#1f5048",
@@ -1267,13 +1267,13 @@ const maps = {
         roadHalfWidth: 100,
         shoulderHalfWidth: 140,
         biome: {
-            skyTop: "#ffd9a0", skyMid: "#f0925a", skyBottom: "#7a3420",
+            skyTop: "#f5a95f", skyMid: "#ffc98d", skyBottom: "#ffe3c2",
             sunColor: "rgba(255, 210, 140, 0.9)",
-            mountainColor: "rgba(160, 70, 40, 0.85)", mountainStyle: "dunes",
-            grassTop: "#c98a4b", grassBottom: "#8a5626",
+            mountainColor: "rgba(202, 134, 96, 0.62)", mountainStyle: "dunes",
+            grassTop: "#e3aa6c", grassBottom: "#b87d40",
             hazeTop: "rgba(255,210,150,0.3)", hazeBottom: "rgba(255,255,255,0)",
-            shoulderA: "#a85f34", shoulderB: "#8a4c29",
-            roadA: "#5c4636", roadB: "#4a382c",
+            shoulderA: "#c9834e", shoulderB: "#ab6c44",
+            roadA: "#8e7c6a", roadB: "#7c6b5c",
             curbA: "#ffb84d", curbB: "#7a3420",
             lane: "rgba(255,220,180,0.75)",
             mapBgTop: "#7a3420", mapBgBottom: "#3f1a10", mapGrass: "#8a5626",
@@ -1537,17 +1537,17 @@ const maps = {
         roadHalfWidth: 100,
         shoulderHalfWidth: 140,
         biome: {
-            skyTop: "#bfe8ff", skyMid: "#5aa6d6", skyBottom: "#123a54",
+            skyTop: "#38a2e0", skyMid: "#7ecdf0", skyBottom: "#daf1ff",
             sunColor: "rgba(255, 236, 168, 0.88)",
-            mountainColor: "rgba(24, 72, 44, 0.85)", mountainStyle: "hills",
-            grassTop: "#2f9150", grassBottom: "#164a29",
-            hazeTop: "rgba(255,255,255,0.22)", hazeBottom: "rgba(255,255,255,0)",
-            shoulderA: "#2f7a45", shoulderB: "#215c34",
+            mountainColor: "rgba(112, 168, 124, 0.6)", mountainStyle: "hills",
+            grassTop: "#72c85c", grassBottom: "#379140",
+            hazeTop: "rgba(230,246,255,0.4)", hazeBottom: "rgba(255,255,255,0)",
+            shoulderA: "#5cb14c", shoulderB: "#489440",
             // was essentially the SAME brightness as the grass (diff of
             // well under 1) — the worst case of this palette-wide issue,
             // road and grass were nearly indistinguishable. Brightened,
             // same hue.
-            roadA: "#6c7454", roadB: "#5c6248",
+            roadA: "#8d9086", roadB: "#7c7f75",
             curbA: "#ff6f6f", curbB: "#fff4d2",
             lane: "rgba(255,255,255,0.78)",
             mapBgTop: "#123a2a", mapBgBottom: "#081f16", mapGrass: "#215c34",
@@ -1765,7 +1765,7 @@ const maps = {
             skyTop: "#ffd194", skyMid: "#ff9d63", skyBottom: "#e26a3f",
             sunColor: "rgba(255, 150, 60, 0.95)",
             mountainColor: "rgba(120, 70, 40, 0.55)", mountainStyle: "hills",
-            grassTop: "#c98f3d", grassBottom: "#7c4f1d",
+            grassTop: "#dda953", grassBottom: "#a06e2e",
             hazeTop: "rgba(255, 200, 120, 0.3)", hazeBottom: "rgba(255,255,255,0)",
             shoulderA: "#8a5a2b", shoulderB: "#7a4e24",
             roadA: "#4a3b31", roadB: "#3f322a",
@@ -3517,52 +3517,70 @@ const cameraModes = [
     },
 ];
 
+/* Retuned toward Mario Kart World's daylight look. The old day palette was a
+   dusk one wearing a blue sky: a near-black horizon, hills painted almost
+   black, grass darker than the road. MKW's world is the opposite of all
+   three — sunlit, high-key, and governed by aerial perspective, where
+   distance washes things *toward* the pale sky rather than toward black.
+   That single idea drives most of the numbers below:
+     - skyBottom is now paler than skyMid, not darker, so the horizon glows
+     - mountains are a translucent haze blue, dissolving into that horizon
+     - grassTop (at the horizon) is lighter than grassBottom (underfoot)
+     - the road is warm light asphalt, clearly brighter than the verge
+   Per-map biomes (see maps[].biome) still override any of these wholesale,
+   so the stylised tracks — Rainbow Skyway, Volcano Rim — keep their own
+   identity; this is the base every unstyled map inherits. */
 const themePalettes = {
     day: {
-        skyTop: "#8ad4ff",
-        skyMid: "#4e9fd6",
-        skyBottom: "#16334f",
-        sunColor: "rgba(255, 220, 128, 0.86)",
-        mountainColor: "rgba(28, 62, 96, 0.86)",
-        grassTop: "#2e7c45",
-        grassBottom: "#1f4f2f",
-        hazeTop: "rgba(255,255,255,0.24)",
+        skyTop: "#2e9bec",
+        skyMid: "#7fd2ff",
+        skyBottom: "#dff2fb",
+        sunColor: "rgba(255, 249, 214, 0.95)",
+        mountainColor: "rgba(122, 172, 210, 0.62)",
+        grassTop: "#7cc95a",
+        grassBottom: "#3d9c37",
+        hazeTop: "rgba(226, 245, 255, 0.42)",
         hazeBottom: "rgba(255,255,255,0)",
-        shoulderA: "#2f6c47",
-        shoulderB: "#27593b",
-        roadA: "#46506f",
-        roadB: "#3a425e",
-        curbA: "#ff6f6f",
-        curbB: "#fff4d2",
-        lane: "rgba(255,255,255,0.78)",
-        farFog: "rgba(234, 245, 255, __ALPHA__)",
-        finish: "rgba(255, 248, 214, 0.95)",
-        mapBgTop: "#20385b",
-        mapBgBottom: "#102238",
-        mapGrass: "#27613a",
+        shoulderA: "#63b544",
+        shoulderB: "#54a33a",
+        roadA: "#828593",
+        roadB: "#717484",
+        curbA: "#ff4b4b",
+        curbB: "#fff8e8",
+        lane: "rgba(255,255,255,0.9)",
+        farFog: "rgba(222, 242, 255, __ALPHA__)",
+        finish: "rgba(255, 252, 236, 0.96)",
+        mapBgTop: "#2b5f8f",
+        mapBgBottom: "#17395c",
+        mapGrass: "#3d8f43",
     },
     night: {
-        skyTop: "#0d1833",
-        skyMid: "#16305e",
-        skyBottom: "#070c18",
-        sunColor: "rgba(255, 232, 168, 0.9)",
-        mountainColor: "rgba(13, 24, 44, 0.92)",
-        grassTop: "#235234",
-        grassBottom: "#11261a",
-        hazeTop: "rgba(170, 205, 255, 0.22)",
+        // Night keeps its mood but stops being unlit: MKW's evening tracks
+        // still have a bright horizon and readable ground, they're just
+        // cooler and lower-contrast than the day ones.
+        skyTop: "#111f45",
+        skyMid: "#254a86",
+        skyBottom: "#5b86b8",
+        sunColor: "rgba(255, 240, 196, 0.92)",
+        mountainColor: "rgba(38, 64, 108, 0.78)",
+        grassTop: "#3f8a4c",
+        grassBottom: "#1f5330",
+        hazeTop: "rgba(158, 196, 255, 0.3)",
         hazeBottom: "rgba(255,255,255,0)",
-        shoulderA: "#2b6648",
-        shoulderB: "#214f38",
-        roadA: "#38435f",
-        roadB: "#2a324a",
-        curbA: "#e85e5e",
-        curbB: "#c8d0ff",
-        lane: "rgba(228, 236, 255, 0.72)",
-        farFog: "rgba(210, 226, 255, __ALPHA__)",
-        finish: "rgba(255, 240, 194, 0.95)",
-        mapBgTop: "#172548",
-        mapBgBottom: "#0b1424",
-        mapGrass: "#173322",
+        cloudTop: "rgba(196, 214, 246, 0.8)",
+        cloudShade: "rgba(96, 124, 172, 0.72)",
+        shoulderA: "#367a52",
+        shoulderB: "#2a6041",
+        roadA: "#525a70",
+        roadB: "#454c60",
+        curbA: "#f06868",
+        curbB: "#e6ecff",
+        lane: "rgba(238, 244, 255, 0.82)",
+        farFog: "rgba(196, 218, 255, __ALPHA__)",
+        finish: "rgba(255, 246, 210, 0.96)",
+        mapBgTop: "#1f3560",
+        mapBgBottom: "#0e1c33",
+        mapGrass: "#215a35",
     },
 };
 
@@ -5089,6 +5107,81 @@ const MOUNTAIN_PROFILES = {
     ],
 };
 
+/* Big soft cumulus is the most recognisable thing about a Mario Kart World
+   sky, and the cheapest way to stop this one reading as an empty gradient.
+   A fixed bank rather than anything random: the same clouds have to be in
+   the same places every frame or they'd swim as the camera turns. Each entry
+   is (x as a fraction of one full 360 degree pan, height above the horizon,
+   scale), and `puffs` are circle centres in units of the cloud's own radius. */
+const CLOUD_BANK = [
+    { x: 0.04, y: 86, scale: 1.15, puffs: [[-1.5, .25, .62], [-.65, -.2, .85], [.25, -.42, 1], [1.15, -.05, .72], [1.85, .3, .5]] },
+    { x: 0.19, y: 30, scale: 0.72, puffs: [[-1.1, .2, .55], [-.3, -.25, .8], [.6, .05, .62]] },
+    { x: 0.31, y: 112, scale: 1.4, puffs: [[-1.8, .3, .58], [-.9, -.28, .9], [0, -.5, 1.05], [.95, -.18, .8], [1.75, .26, .55]] },
+    { x: 0.47, y: 46, scale: 0.9, puffs: [[-1.2, .22, .6], [-.35, -.3, .88], [.55, -.02, .68], [1.25, .28, .45]] },
+    { x: 0.58, y: 124, scale: 1.05, puffs: [[-1.35, .28, .6], [-.5, -.24, .86], [.4, -.35, .92], [1.25, .1, .62]] },
+    { x: 0.71, y: 34, scale: 0.66, puffs: [[-.85, .18, .55], [-.05, -.28, .78], [.7, .1, .55]] },
+    { x: 0.84, y: 96, scale: 1.25, puffs: [[-1.6, .3, .6], [-.75, -.22, .88], [.15, -.46, 1], [1.05, -.08, .75], [1.8, .28, .5]] },
+    { x: 0.93, y: 58, scale: 0.85, puffs: [[-1.05, .24, .58], [-.2, -.3, .84], [.7, .05, .64]] },
+];
+
+// Cloud colour, for any palette that doesn't state one. The base day/night
+// palettes do (plain white cumulus, and a dimmed blue-grey at night), but the
+// fourteen per-map biomes only override sky/ground/road — so pasting daylight
+// white onto Rainbow Skyway's deep-space purple or Volcano Rim's ember red
+// would put the wrong clouds on two-thirds of the tracks. Lightening that
+// map's own sky instead gives every biome clouds that belong to it, with no
+// extra per-map data to keep in sync.
+function lightenHex(hex, amount) {
+    const value = parseInt(hex.slice(1), 16);
+    const mix = (channel) => Math.round(channel + (255 - channel) * amount);
+    return `rgb(${mix((value >> 16) & 255)}, ${mix((value >> 8) & 255)}, ${mix(value & 255)})`;
+}
+
+function getCloudColors(palette) {
+    return {
+        top: palette.cloudTop ?? lightenHex(palette.skyTop, 0.8),
+        shade: palette.cloudShade ?? lightenHex(palette.skyMid, 0.42),
+    };
+}
+
+function drawClouds(camera, palette, panOffset) {
+    // Clouds sit further out than the hills, so they slide past more slowly --
+    // the parallax split is what sells the sky as having depth at all. On top
+    // of that they drift on their own slow clock, which keeps the sky alive
+    // while you're sitting on the grid with the camera still.
+    const drift = (performance.now() / 1000) * 5.2;
+    const cloudColors = getCloudColors(palette);
+    ctx.save();
+    // Nothing below the horizon: a cloud's lower puffs can dip past it on a
+    // steep camera pitch, and a cloud lying on the grass reads as a bug.
+    ctx.beginPath();
+    ctx.rect(0, 0, WIDTH, Math.max(0, camera.horizon + 6));
+    ctx.clip();
+
+    CLOUD_BANK.forEach((cloud) => {
+        const baseX = (cloud.x * WIDTH + panOffset * 0.62 + drift) % WIDTH;
+        const y = camera.horizon - cloud.y;
+        const radius = 42 * cloud.scale;
+        // Drawn three times, one tile either side, so a cloud straddling the
+        // screen edge comes back in on the other side instead of popping.
+        [-1, 0, 1].forEach((tile) => {
+            const cx = baseX + tile * WIDTH;
+            if (cx < -260 || cx > WIDTH + 260) return;
+            const gradient = ctx.createLinearGradient(0, y - radius * 1.1, 0, y + radius * 0.9);
+            gradient.addColorStop(0, cloudColors.top);
+            gradient.addColorStop(1, cloudColors.shade);
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            cloud.puffs.forEach(([px, py, pr]) => {
+                ctx.moveTo(cx + px * radius + pr * radius, y + py * radius);
+                ctx.arc(cx + px * radius, y + py * radius, pr * radius, 0, Math.PI * 2);
+            });
+            ctx.fill();
+        });
+    });
+    ctx.restore();
+}
+
 function drawSilhouettePath(profile, mountainBase, ox) {
     ctx.moveTo(ox + profile[0][0], mountainBase + profile[0][1]);
     for (let i = 1; i < profile.length; i += 1) {
@@ -5120,6 +5213,8 @@ function drawSky(camera, player) {
     const cameraAngle = Math.atan2(camera.forward.y, camera.forward.x);
     const panScale = WIDTH / (Math.PI * 2);
     const panOffset = (((-cameraAngle * panScale) % WIDTH) + WIDTH) % WIDTH;
+    drawClouds(camera, palette, panOffset);
+
     const mountainProfile = MOUNTAIN_PROFILES[palette.mountainStyle] ?? MOUNTAIN_PROFILES.hills;
     ctx.fillStyle = palette.mountainColor;
     [-1, 0, 1].forEach((tile) => {
@@ -6749,98 +6844,337 @@ function drawMiniMap3D(viewRacer = racers[0], camera = null) {
     ctx.fillText("Mini Map", panelX + 10, panelY + 16);
 }
 
+/* Mario Kart World's HUD, rather than the debug-readout panel this used to be.
+
+   MKW puts each piece of information in the corner it belongs to and gives it
+   a shape you can read without looking straight at it:
+     top-left      the item slot, one big rounded square
+     under it      coins, as a coin and a count
+     top-right     the lap, as a pill
+     bottom-right  your place, as an enormous outlined number
+   Nothing sits in the middle of the screen, because that's where the race is.
+   Speed and the pad name are the only things kept from the old panel; they're
+   diagnostics, so they go small and low-contrast along the bottom edge instead
+   of in a bordered box competing with the item slot.
+
+   Everything is laid out in the canvas's own 960x640 space. Split-screen
+   scales the whole viewport (see draw()), so these coordinates stay correct at
+   any seat count without a second set of numbers. */
+
+// The item slot shows a glyph, not a word — the label is only ever readable
+// when you're already looking at it, and during a race you aren't.
+const ITEM_GLYPHS = {
+    boost: "\u{1F4A8}",
+    rocket: "\u{1F680}",
+    shield: "\u{1F6E1}\uFE0F",
+    oil: "\u{1F6E2}\uFE0F",
+    coinbag: "\u{1F4B0}",
+    star: "\u2B50",
+    lightning: "\u26A1",
+    boo: "\u{1F47B}",
+};
+
+function placeSuffix(place) {
+    // 11th/12th/13th are the exceptions every naive version of this gets wrong;
+    // with 13 racers on track they're all reachable.
+    if (place % 100 >= 11 && place % 100 <= 13) return "th";
+    return { 1: "st", 2: "nd", 3: "rd" }[place % 10] ?? "th";
+}
+
+function drawItemSlot(player) {
+    const x = 22;
+    const y = 20;
+    const size = 86;
+
+    ctx.save();
+    // Body, then a light top-half wash: the highlight is what makes the slot
+    // read as a raised piece of hardware rather than a hole cut in the screen.
+    ctx.fillStyle = "rgba(10, 20, 40, 0.52)";
+    fillRoundedRect(x, y, size, size, 20);
+    const sheen = ctx.createLinearGradient(0, y, 0, y + size);
+    sheen.addColorStop(0, "rgba(255,255,255,0.22)");
+    sheen.addColorStop(0.55, "rgba(255,255,255,0.04)");
+    sheen.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = sheen;
+    fillRoundedRect(x, y, size, size, 20);
+
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = player.item ? "rgba(255, 226, 138, 0.95)" : "rgba(255,255,255,0.42)";
+    ctx.beginPath();
+    addRoundedRectPath(x + 1.5, y + 1.5, size - 3, size - 3, 18.5);
+    ctx.stroke();
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    if (player.item) {
+        ctx.font = "44px Space Grotesk";
+        // fillStyle is still the sheen gradient from painting the slot body;
+        // colour emoji ignore it, but the "?" fallback for an unmapped item
+        // would otherwise come out as a near-invisible wash.
+        ctx.fillStyle = "#ffffff";
+        ctx.fillText(ITEM_GLYPHS[player.item] ?? "?", x + size / 2, y + size / 2 + 2);
+    } else {
+        ctx.font = "700 40px Oswald";
+        ctx.fillStyle = "rgba(255,255,255,0.2)";
+        ctx.fillText("?", x + size / 2, y + size / 2 + 2);
+    }
+
+    // An active shield is a state, not a held item, so it gets its own ring
+    // around the slot rather than replacing whatever you're carrying.
+    if (player.shieldTimer > 0) {
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "rgba(83, 224, 255, 0.9)";
+        ctx.beginPath();
+        addRoundedRectPath(x - 5, y - 5, size + 10, size + 10, 24);
+        ctx.stroke();
+    }
+    ctx.restore();
+}
+
+function drawCoinCounter(player) {
+    const cx = 38;
+    const cy = 130;
+
+    ctx.save();
+    const coin = ctx.createLinearGradient(cx - 13, cy - 13, cx + 13, cy + 13);
+    coin.addColorStop(0, "#ffe89a");
+    coin.addColorStop(0.5, "#ffc93c");
+    coin.addColorStop(1, "#d98f0d");
+    ctx.fillStyle = coin;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 13, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "rgba(120, 74, 4, 0.8)";
+    ctx.stroke();
+
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.font = "700 24px Oswald";
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = "rgba(8, 14, 30, 0.8)";
+    const label = `\u00D7${player.coins}`;
+    ctx.strokeText(label, cx + 20, cy + 1);
+    ctx.fillStyle = "#fff6dd";
+    ctx.fillText(label, cx + 20, cy + 1);
+    ctx.restore();
+}
+
+function drawLapPill(player) {
+    ctx.save();
+    const width = 128;
+    const height = 40;
+    const x = WIDTH - width - 22;
+    const y = 20;
+    ctx.fillStyle = "rgba(10, 20, 40, 0.55)";
+    fillRoundedRect(x, y, width, height, 20);
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = "rgba(255,255,255,0.4)";
+    ctx.beginPath();
+    addRoundedRectPath(x + 1.25, y + 1.25, width - 2.5, height - 2.5, 19);
+    ctx.stroke();
+
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "left";
+    ctx.font = "700 13px Oswald";
+    ctx.fillStyle = "rgba(255,255,255,0.62)";
+    ctx.fillText("LAP", x + 16, y + height / 2 + 1);
+    ctx.font = "700 26px Oswald";
+    ctx.fillStyle = "#ffd166";
+    ctx.fillText(`${Math.min(player.lap + 1, getLapsToWin())}/${getLapsToWin()}`, x + 55, y + height / 2 + 1);
+    ctx.restore();
+}
+
+function drawPlaceBadge(player) {
+    // The one number worth reading at a glance mid-corner, so it's drawn the
+    // way MKW draws it: huge, in the corner, and outlined heavily enough to
+    // stay legible over any track, sky or wall it happens to land on.
+    ctx.save();
+    ctx.textAlign = "right";
+    ctx.textBaseline = "alphabetic";
+    const baseX = WIDTH - 26;
+    const baseY = HEIGHT - 26;
+    const suffix = placeSuffix(player.place);
+
+    ctx.font = "700 30px Oswald";
+    const suffixWidth = ctx.measureText(suffix).width;
+    ctx.lineWidth = 7;
+    ctx.strokeStyle = "rgba(8, 14, 30, 0.85)";
+    ctx.strokeText(suffix, baseX, baseY - 6);
+    ctx.fillStyle = "#ffe9b0";
+    ctx.fillText(suffix, baseX, baseY - 6);
+
+    ctx.font = "700 78px Oswald";
+    ctx.lineWidth = 11;
+    ctx.strokeStyle = "rgba(8, 14, 30, 0.85)";
+    ctx.strokeText(`${player.place}`, baseX - suffixWidth - 4, baseY);
+    // Leading three get the podium colours; everyone else is plain white.
+    ctx.fillStyle = player.place === 1 ? "#ffd24a" : player.place === 2 ? "#dfe6f5" : player.place === 3 ? "#e6a86a" : "#ffffff";
+    ctx.fillText(`${player.place}`, baseX - suffixWidth - 4, baseY);
+    ctx.restore();
+}
+
+function drawDriftCharge(player) {
+    if (!player.drifting || player.driftCharge <= DRIFT_STAGE1) return;
+    const ready = player.driftCharge > DRIFT_STAGE2;
+    ctx.save();
+    const width = 118;
+    const x = 22;
+    const y = 152;
+    ctx.fillStyle = ready ? "rgba(255, 128, 32, 0.88)" : "rgba(40, 168, 224, 0.88)";
+    fillRoundedRect(x, y, width, 26, 13);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = "700 13px Oswald";
+    ctx.fillStyle = "#0b1428";
+    ctx.fillText(ready ? "MINI-TURBO READY" : "CHARGING\u2026", x + width / 2, y + 14);
+    ctx.restore();
+}
+
 function drawHUD(viewRacer = racers[0]) {
     const player = viewRacer;
-    ctx.fillStyle = "rgba(4, 6, 12, 0.55)";
-    ctx.fillRect(18, 18, 190, 116);
-    ctx.strokeStyle = "rgba(255,255,255,0.12)";
-    ctx.strokeRect(18.5, 18.5, 189, 115);
+    if (!player) return;
 
-    ctx.fillStyle = "#f2f5ff";
-    ctx.font = "700 16px Space Grotesk";
-    ctx.fillText(`Place: ${player.place}/${racers.length}`, 32, 44);
-    ctx.fillText(`Lap: ${Math.min(player.lap + 1, getLapsToWin())}/${getLapsToWin()}`, 32, 68);
-    ctx.fillStyle = player.item ? "#ffd166" : "#9ea8cf";
-    ctx.fillText(`Item: ${player.item ? ITEM_LABELS[player.item] : "—"}${player.shieldTimer > 0 ? " 🛡" : ""}`, 32, 92);
-    ctx.fillStyle = "#ffd166";
-    ctx.fillText(`Coins: ${player.coins}/${COIN_MAX}`, 32, 116);
-    if (player.drifting && player.driftCharge > DRIFT_STAGE1) {
-        ctx.fillStyle = player.driftCharge > DRIFT_STAGE2 ? "#ff9f43" : "#53e0ff";
-        ctx.fillText(player.driftCharge > DRIFT_STAGE2 ? "TURBO READY!" : "charging…", 120, 68);
-    }
+    drawItemSlot(player);
+    drawCoinCounter(player);
+    drawDriftCharge(player);
+    drawLapPill(player);
+    drawPlaceBadge(player);
+
+    // Speed and controller name are diagnostics, not race information — bottom
+    // edge, low contrast, out of the way of everything above.
+    ctx.save();
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    const barX = 22;
+    const barY = HEIGHT - 40;
+    ctx.fillStyle = "rgba(255,255,255,0.14)";
+    fillRoundedRect(barX, barY, 168, 7, 4);
+    ctx.fillStyle = "#53e0ff";
+    fillRoundedRect(barX, barY, Math.max(4, 168 * Math.min(Math.abs(player.speed) / MAX_SPEED, 1)), 7, 4);
+    ctx.font = "700 12px Space Grotesk";
+    ctx.fillStyle = "rgba(255,255,255,0.72)";
+    ctx.fillText(`${Math.round(player.speed)} km/h`, barX, barY - 12);
+    ctx.fillStyle = gamepadConnected ? "rgba(155,255,143,0.8)" : "rgba(255,255,255,0.4)";
+    ctx.fillText(`Pad: ${gamepadLabel}`, barX, barY + 20);
+    ctx.restore();
 
     if (backHoldStart) {
         const holdProgress = clamp((performance.now() - backHoldStart) / 1000 / BACK_HOLD_SECONDS, 0, 1);
+        ctx.save();
         ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
         ctx.fillStyle = "rgba(4, 6, 12, 0.7)";
-        ctx.fillRect(CENTER.x - 110, HEIGHT - 74, 220, 46);
+        fillRoundedRect(CENTER.x - 110, HEIGHT - 78, 220, 50, 16);
         ctx.fillStyle = "#f2f5ff";
         ctx.font = "600 13px Space Grotesk";
-        ctx.fillText("Hold B to exit to hub…", CENTER.x, HEIGHT - 54);
+        ctx.fillText("Hold B to exit to hub\u2026", CENTER.x, HEIGHT - 60);
         ctx.fillStyle = "rgba(255,255,255,0.14)";
-        ctx.fillRect(CENTER.x - 90, HEIGHT - 44, 180, 8);
+        fillRoundedRect(CENTER.x - 90, HEIGHT - 45, 180, 8, 4);
         ctx.fillStyle = "#ff6b6b";
-        ctx.fillRect(CENTER.x - 90, HEIGHT - 44, 180 * holdProgress, 8);
-        ctx.textAlign = "left";
+        fillRoundedRect(CENTER.x - 90, HEIGHT - 45, 180 * holdProgress, 8, 4);
+        ctx.restore();
     }
 
-    const speedMeter = Math.min((Math.abs(player.speed) / MAX_SPEED) * 100, 100);
-    ctx.fillStyle = "rgba(255,255,255,0.08)";
-    ctx.fillRect(WIDTH - 206, 26, 174, 18);
-    ctx.fillStyle = "#53e0ff";
-    ctx.fillRect(WIDTH - 206, 26, speedMeter + 6, 18);
-    ctx.fillStyle = "#f2f5ff";
-    ctx.font = "600 14px Space Grotesk";
-    ctx.fillText(`Speed ${Math.round(player.speed)}`, WIDTH - 206, 62);
-
-    ctx.fillStyle = gamepadConnected ? "#9bff8f" : "#9ea8cf";
-    ctx.font = "600 12px Space Grotesk";
-    ctx.fillText(`Pad: ${gamepadLabel}`, WIDTH - 206, 82);
-
     if (devModeEnabled) {
+        ctx.save();
+        ctx.textAlign = "left";
+        ctx.textBaseline = "alphabetic";
         ctx.fillStyle = "rgba(4, 6, 12, 0.7)";
-        ctx.fillRect(18, 142, 190, 112);
+        fillRoundedRect(22, 190, 190, 112, 14);
         ctx.strokeStyle = "rgba(83,224,255,0.22)";
-        ctx.strokeRect(18.5, 142.5, 189, 111);
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        addRoundedRectPath(22.5, 190.5, 189, 111, 14);
+        ctx.stroke();
         ctx.fillStyle = "#f2f5ff";
         ctx.font = "700 13px Space Grotesk";
-        ctx.fillText("DEV MODE", 32, 164);
+        ctx.fillText("DEV MODE", 36, 212);
         ctx.font = "500 12px Space Grotesk";
-        ctx.fillText(`Map: ${maps[currentMapKey]?.label ?? currentMapKey}`, 32, 184);
-        ctx.fillText(`Checkpoint: ${player.checkpointIndex + 1}/${checkpoints.length}`, 32, 202);
-        ctx.fillText(`Lap: ${player.lap}/${getLapsToWin()}`, 32, 220);
-        ctx.fillText(`Bots: ${racers.length - 1}`, 32, 238);
-        ctx.fillText(`Pos: ${Math.round(player.x)}, ${Math.round(player.y)}`, 32, 256);
+        ctx.fillText(`Map: ${maps[currentMapKey]?.label ?? currentMapKey}`, 36, 232);
+        ctx.fillText(`Checkpoint: ${player.checkpointIndex + 1}/${checkpoints.length}`, 36, 250);
+        ctx.fillText(`Lap: ${player.lap}/${getLapsToWin()}`, 36, 268);
+        ctx.fillText(`Bots: ${racers.length - 1}`, 36, 286);
+        ctx.fillText(`Pos: ${Math.round(player.x)}, ${Math.round(player.y)}`, 36, 304);
+        ctx.restore();
     }
 }
 
 function drawRaceStartCountdown() {
     if (raceCountdown <= 0 && raceGoTimer <= 0) return;
+    // Pausing on the grid would otherwise leave the starting lights and the
+    // countdown digit floating behind the pause panel, which is drawn after this.
+    if (paused) return;
 
     const isGo = raceCountdown <= 0;
     const label = isGo ? "GO!" : `${Math.ceil(raceCountdown)}`;
     const alpha = isGo ? clamp(raceGoTimer / 0.62, 0, 1) : 1;
+    const y = HEIGHT * 0.34;
+
+    // Each number gets its own pop: MKW punches the digit in oversized and
+    // settles it, rather than cutting between three static frames. `fraction`
+    // is how far through the current second we are, so the scale is driven by
+    // the countdown itself and needs no extra timer.
+    const fraction = isGo ? 1 - alpha : 1 - (raceCountdown % 1);
+    const pop = 1 + 0.28 * Math.pow(1 - clamp(fraction / 0.35, 0, 1), 2);
 
     ctx.save();
     ctx.globalAlpha = alpha;
+    ctx.translate(CENTER.x, y);
+    ctx.scale(pop, pop);
 
-    const glowRadius = isGo ? 180 : 132;
-    const glow = ctx.createRadialGradient(CENTER.x, HEIGHT * 0.34, 20, CENTER.x, HEIGHT * 0.34, glowRadius);
-    glow.addColorStop(0, isGo ? "rgba(83, 224, 255, 0.34)" : "rgba(255, 209, 102, 0.3)");
+    // Three starting lights above the number, filling in as the count runs
+    // down — the actual thing you watch on a Mario Kart grid.
+    const lit = isGo ? 3 : 3 - Math.ceil(raceCountdown);
+    for (let i = 0; i < 3; i += 1) {
+        const lx = (i - 1) * 46;
+        const on = i < lit || isGo;
+        ctx.beginPath();
+        ctx.arc(lx, -118, 15, 0, Math.PI * 2);
+        ctx.fillStyle = on ? (isGo ? "#5cff8a" : "#ff4b4b") : "rgba(255,255,255,0.14)";
+        ctx.fill();
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "rgba(8, 14, 30, 0.75)";
+        ctx.stroke();
+        if (on) {
+            ctx.beginPath();
+            ctx.arc(lx, -118, 26, 0, Math.PI * 2);
+            ctx.fillStyle = isGo ? "rgba(92, 255, 138, 0.2)" : "rgba(255, 75, 75, 0.2)";
+            ctx.fill();
+        }
+    }
+
+    const glowRadius = isGo ? 190 : 140;
+    const glow = ctx.createRadialGradient(0, 0, 20, 0, 0, glowRadius);
+    glow.addColorStop(0, isGo ? "rgba(92, 255, 138, 0.36)" : "rgba(255, 209, 102, 0.32)");
     glow.addColorStop(1, "rgba(0,0,0,0)");
     ctx.fillStyle = glow;
     ctx.beginPath();
-    ctx.arc(CENTER.x, HEIGHT * 0.34, glowRadius, 0, Math.PI * 2);
+    ctx.arc(0, 0, glowRadius, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.font = `700 ${isGo ? 140 : 128}px Oswald`;
+    ctx.font = `700 ${isGo ? 146 : 132}px Oswald`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.lineWidth = 10;
-    ctx.strokeStyle = "rgba(6, 10, 24, 0.72)";
-    ctx.strokeText(label, CENTER.x, HEIGHT * 0.34);
-    ctx.fillStyle = isGo ? "#53e0ff" : "#ffd166";
-    ctx.fillText(label, CENTER.x, HEIGHT * 0.34);
+    // Two passes of outline, wide then narrow, gives the thick cream-over-dark
+    // edge Nintendo's countdown type has without needing a real font stroke.
+    ctx.lineJoin = "round";
+    ctx.lineWidth = 18;
+    ctx.strokeStyle = "rgba(8, 14, 30, 0.8)";
+    ctx.strokeText(label, 0, 0);
+    ctx.lineWidth = 9;
+    ctx.strokeStyle = "#fff6dd";
+    ctx.strokeText(label, 0, 0);
+    const fill = ctx.createLinearGradient(0, -70, 0, 70);
+    if (isGo) {
+        fill.addColorStop(0, "#b7ffd0");
+        fill.addColorStop(1, "#22c55e");
+    } else {
+        fill.addColorStop(0, "#ffe89a");
+        fill.addColorStop(1, "#f0a319");
+    }
+    ctx.fillStyle = fill;
+    ctx.fillText(label, 0, 0);
     ctx.restore();
 }
 
@@ -6870,25 +7204,173 @@ function drawFallOverlay(viewRacer = racers[0]) {
     ctx.restore();
 }
 
+/* Pausing is the only moment in a race where you have time to read, so it's
+ * where the controls belong. The old overlay said "PAUSED" and how to unpause,
+ * which is the one thing you already knew — everything you might actually have
+ * paused to look up was buried in the pre-race menu behind a fresh page load.
+ *
+ * What's listed adapts to how you're actually playing: the keyboard scheme for
+ * your own seat (each split-screen seat has a different one), your real gamepad
+ * bindings if a pad is connected (including any you've remapped), and the touch
+ * buttons only when a touchscreen is what's driving. */
+function pauseControlSections() {
+    const sections = [];
+
+    const seatCount = Math.max(1, localPlayerCount);
+    for (let seat = 0; seat < seatCount; seat += 1) {
+        const scheme = seatCount > 1 ? LOCAL_CONTROL_SCHEMES[seat] : DEFAULT_CONTROLS;
+        if (!scheme) continue;
+        const rows = [
+            ["Steer / accelerate", keyComboLabel(scheme.up, scheme.left, scheme.down, scheme.right)],
+            ["Use item", keyListLabel(scheme.boost)],
+            ["Drift", `Hold ${keyListLabel(scheme.drift)}`],
+        ];
+        if (scheme.mouse) rows.push(["Mouse steering", "Move to steer, click to use an item"]);
+        sections.push({ title: seatCount > 1 ? `Player ${seat + 1} \u00b7 keyboard` : "Keyboard", rows });
+    }
+
+    if (gamepadConnected) {
+        // GAMEPAD_REMAPPABLE is the list of actions the remap UI offers, which
+        // leaves out steering (bound to the stick and the D-pad, not rebindable)
+        // — but steering is the first thing anyone picking up a pad wants to
+        // know, so it's listed here even though it isn't remappable.
+        sections.push({
+            title: `Gamepad \u00b7 ${gamepadLabel}`,
+            rows: [
+                ["Steer", `Left stick, or ${padBindingLabel("steerLeft")} / ${padBindingLabel("steerRight")}`],
+                ...GAMEPAD_REMAPPABLE.map(({ key, label }) => [label, padBindingLabel(key)]),
+            ],
+        });
+    }
+
+    sections.push({
+        title: "Anywhere",
+        rows: [
+            ["Pause / resume", gamepadConnected ? "P, or + on the pad" : "P"],
+            ["Back to the hub", gamepadConnected ? "Esc, or hold B" : "Esc"],
+            ["Fullscreen", "F"],
+        ],
+    });
+
+    return sections;
+}
+
+// "ArrowUp" / "KeyW" / "Numpad8" are how the browser names a key; nobody calls
+// them that out loud, so they're printed the way they're written on the key.
+function prettyKeyName(code) {
+    if (!code) return "";
+    if (code.startsWith("Arrow")) return { ArrowUp: "\u2191", ArrowDown: "\u2193", ArrowLeft: "\u2190", ArrowRight: "\u2192" }[code] ?? code;
+    if (code.startsWith("Key")) return code.slice(3);
+    if (code.startsWith("Digit")) return code.slice(5);
+    if (code === "Space") return "Space";
+    if (code === "ShiftLeft") return "L-Shift";
+    if (code === "ShiftRight") return "R-Shift";
+    if (code === "NumpadAdd") return "Numpad +";
+    if (code.startsWith("Numpad")) return `Numpad ${code.slice(6)}`;
+    return code;
+}
+
+function keyListLabel(codes) {
+    if (!codes || !codes.length) return "\u2014";
+    return codes.map(prettyKeyName).join(" or ");
+}
+
+function keyComboLabel(up, left, down, right) {
+    return `${prettyKeyName(up?.[0])} ${prettyKeyName(left?.[0])} ${prettyKeyName(down?.[0])} ${prettyKeyName(right?.[0])}`;
+}
+
+function padBindingLabel(actionKey) {
+    const bound = gamepadMapping?.[actionKey];
+    if (bound === undefined || bound === null) return "\u2014";
+    const indexes = Array.isArray(bound) ? bound : [bound];
+    return indexes.map((index) => gamepadButtonName(index)).join(" / ") || "\u2014";
+}
+
 function drawPausedOverlay() {
     if (!paused) return;
 
+    const sections = pauseControlSections();
+    const rowHeight = 21;
+    const headerHeight = 30;
+    const sectionGap = 16;
+    const heights = sections.map((section) => headerHeight + section.rows.length * rowHeight + sectionGap);
+
+    // Two columns, balanced by height rather than by count: the gamepad section
+    // alone is eleven rows against the keyboard's four, so splitting down the
+    // middle of the *list* would leave one column twice the length of the other.
+    const total = heights.reduce((sum, h) => sum + h, 0);
+    const columns = [[], []];
+    const columnHeights = [0, 0];
+    sections.forEach((section, i) => {
+        const target = columnHeights[0] > 0 && columnHeights[0] + heights[i] > total / 2 + headerHeight ? 1 : 0;
+        columns[target].push(section);
+        columnHeights[target] += heights[i];
+    });
+    const twoColumns = columns[1].length > 0;
+
+    const padding = 26;
+    const columnWidth = 336;
+    const panelWidth = padding * 2 + columnWidth * (twoColumns ? 2 : 1) + (twoColumns ? 24 : 0);
+    const panelHeight = padding * 2 + Math.max(columnHeights[0], columnHeights[1]) - sectionGap + 34;
+    const panelX = CENTER.x - panelWidth / 2;
+    const panelY = Math.max(88, CENTER.y - panelHeight / 2 + 16);
+
     ctx.save();
-    ctx.fillStyle = "rgba(6, 9, 18, 0.42)";
+    ctx.fillStyle = "rgba(6, 9, 18, 0.74)";
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.font = "700 76px Oswald";
-    ctx.lineWidth = 8;
-    ctx.strokeStyle = "rgba(7, 10, 20, 0.8)";
-    ctx.strokeText("PAUSED", CENTER.x, HEIGHT * 0.42);
-    ctx.fillStyle = "#f2f5ff";
-    ctx.fillText("PAUSED", CENTER.x, HEIGHT * 0.42);
+    ctx.font = "700 56px Oswald";
+    ctx.lineJoin = "round";
+    ctx.lineWidth = 12;
+    ctx.strokeStyle = "rgba(7, 10, 20, 0.9)";
+    ctx.strokeText("PAUSED", CENTER.x, panelY - 34);
+    ctx.fillStyle = "#fff6dd";
+    ctx.fillText("PAUSED", CENTER.x, panelY - 34);
 
-    ctx.font = "600 22px Space Grotesk";
-    ctx.fillStyle = "rgba(242,245,255,0.92)";
-    ctx.fillText("Press P or Pause button to resume", CENTER.x, HEIGHT * 0.5);
+    // Cream-bordered navy slab, the same panel the pre-race menu uses — the
+    // pause screen is part of the same menu system, so it looks like it.
+    ctx.fillStyle = "rgba(9, 24, 56, 0.94)";
+    fillRoundedRect(panelX, panelY, panelWidth, panelHeight, 24);
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = "#fff6dd";
+    ctx.beginPath();
+    addRoundedRectPath(panelX + 2, panelY + 2, panelWidth - 4, panelHeight - 4, 22);
+    ctx.stroke();
+
+    ctx.textBaseline = "alphabetic";
+    columns.forEach((column, columnIndex) => {
+        let y = panelY + padding + 12;
+        const x = panelX + padding + columnIndex * (columnWidth + 24);
+        column.forEach((section) => {
+            ctx.textAlign = "left";
+            ctx.font = "700 13px Oswald";
+            ctx.fillStyle = "#ffd166";
+            ctx.fillText(section.title.toUpperCase(), x, y);
+            ctx.fillStyle = "rgba(255, 209, 102, 0.35)";
+            ctx.fillRect(x, y + 7, columnWidth, 2);
+            y += headerHeight;
+
+            section.rows.forEach(([label, value]) => {
+                ctx.textAlign = "left";
+                ctx.font = "500 13px Space Grotesk";
+                ctx.fillStyle = "rgba(206, 224, 255, 0.78)";
+                ctx.fillText(label, x, y);
+                ctx.textAlign = "right";
+                ctx.font = "700 13px Space Grotesk";
+                ctx.fillStyle = "#ffffff";
+                ctx.fillText(value, x + columnWidth, y);
+                y += rowHeight;
+            });
+            y += sectionGap;
+        });
+    });
+
+    ctx.textAlign = "center";
+    ctx.font = "600 14px Space Grotesk";
+    ctx.fillStyle = "rgba(242,245,255,0.85)";
+    ctx.fillText(gamepadConnected ? "Press P or + to resume" : "Press P or the Pause button to resume", CENTER.x, panelY + panelHeight - 18);
     ctx.restore();
 }
 
@@ -7731,14 +8213,24 @@ function buildFeatureGroup3D(map) {
 }
 
 function applyTheme3D(palette) {
-    scene3D.fog = new THREE.Fog(new THREE.Color(palette.skyMid), 800, 2300);
+    const night = dayNightMode === "night";
+    // Aerial perspective is what gives Mario Kart World its sense of scale, so
+    // the falloff starts earlier and finishes later — a long soft gradient
+    // rather than a wall of haze at one distance. Still keyed to skyMid rather
+    // than the horizon colour: several biomes (Rainbow Skyway, Neon Loop) put
+    // their *darkest* tone at skyBottom, and fogging toward that would sink
+    // distant track into black — the exact opposite of what this is for.
+    scene3D.fog = new THREE.Fog(new THREE.Color(palette.skyMid), 700, 2600);
     renderer3D.setClearColor(new THREE.Color(palette.skyMid), 1);
     scene3D.children.filter((child) => child.isLight).forEach((light) => scene3D.remove(light));
-    const sun = new THREE.DirectionalLight(new THREE.Color(palette.sunColor), dayNightMode === "night" ? 0.55 : 1.05);
+    const sun = new THREE.DirectionalLight(new THREE.Color(palette.sunColor), night ? 0.55 : 1.15);
     sun.position.set(-300, 400, -200);
     scene3D.add(sun);
-    scene3D.add(new THREE.HemisphereLight(new THREE.Color(palette.skyTop), new THREE.Color(palette.grassBottom), dayNightMode === "night" ? 0.45 : 0.85));
-    scene3D.add(new THREE.AmbientLight(0xffffff, dayNightMode === "night" ? 0.25 : 0.4));
+    // Sky-to-ground bounce and flat fill both come up in daylight — the look
+    // is high-key, so nothing should fall to near-black just for facing away
+    // from the sun.
+    scene3D.add(new THREE.HemisphereLight(new THREE.Color(palette.skyTop), new THREE.Color(palette.grassBottom), night ? 0.45 : 1.0));
+    scene3D.add(new THREE.AmbientLight(0xffffff, night ? 0.25 : 0.52));
 }
 
 // Bakes the same sky-gradient + mountain-silhouette art drawSky() always
@@ -7771,6 +8263,31 @@ function buildSkyTexture3D(palette) {
     c2d.fill();
 
     const mountainBase = h * 0.72;
+
+    // The same CLOUD_BANK drawSky() paints, baked in above the mountain line.
+    // Static here, unlike the 2D path's slow drift: this is a texture on a
+    // cylinder the camera turns inside, so yaw already pans it, and a drifting
+    // version would mean re-uploading the texture every frame. Tiled one copy
+    // either side so a cloud sitting on the texture's wrap seam is whole.
+    const skyCloudColors = getCloudColors(palette);
+    CLOUD_BANK.forEach((cloud) => {
+        const y = mountainBase - cloud.y;
+        const radius = 42 * cloud.scale;
+        [-1, 0, 1].forEach((tile) => {
+            const cx = cloud.x * w + tile * w;
+            const gradient = c2d.createLinearGradient(0, y - radius * 1.1, 0, y + radius * 0.9);
+            gradient.addColorStop(0, skyCloudColors.top);
+            gradient.addColorStop(1, skyCloudColors.shade);
+            c2d.fillStyle = gradient;
+            c2d.beginPath();
+            cloud.puffs.forEach(([px, py, pr]) => {
+                c2d.moveTo(cx + px * radius + pr * radius, y + py * radius);
+                c2d.arc(cx + px * radius, y + py * radius, pr * radius, 0, Math.PI * 2);
+            });
+            c2d.fill();
+        });
+    });
+
     const profile = MOUNTAIN_PROFILES[palette.mountainStyle] ?? MOUNTAIN_PROFILES.hills;
     c2d.fillStyle = palette.mountainColor;
     c2d.beginPath();
@@ -8029,7 +8546,7 @@ function drawViewport(player) {
             ctx.restore();
         }
 
-        if (miniMapEnabled) {
+        if (miniMapEnabled && !paused) {
             drawMiniMap3D(player, camera);
         }
     }
@@ -8037,7 +8554,10 @@ function drawViewport(player) {
     drawOffRoadWarning(player);
     drawFallOverlay(player);
     drawPausedOverlay();
-    drawHUD(player);
+    // The pause screen is a full-screen menu — the HUD and mini-map are drawn
+    // after everything else, so left on they'd sit on top of the controls list
+    // rather than behind it.
+    if (!paused) drawHUD(player);
 }
 
 function getSplitScreenLayout(count) {
@@ -8415,7 +8935,10 @@ function mpUpdateUI() {
         mpControls.classList.remove("hidden");
         mpStatus.textContent = mpStatusNotice || "Race solo, or connect with friends on your network.";
         mpStatusNotice = null;
+        mpMatchScope = null;
+        mpMatchStatus = null;
         mpSyncCameraStrip();
+        mpSyncOnlineLobby();
         return;
     }
     mpRoomInfo.classList.remove("hidden");
@@ -8427,6 +8950,7 @@ function mpUpdateUI() {
         : "Connected — wait for the host to start the race.";
     mpRenderPlayerList();
     mpSyncCameraStrip();
+    mpSyncOnlineLobby();
 }
 
 // the hub's profile system (js/profiles.js) and this page share the same
@@ -8743,6 +9267,103 @@ function mpJoin(code) {
     });
 }
 
+/* --- Play Online: public matchmaking -------------------------------------
+ *
+ * The server does all the room-picking (see `matchmake` in server.js) and
+ * replies with the ordinary `joined` message, so everything downstream of
+ * being in a room — peer racers, chat, voice, the raceStart relay — is the
+ * same code that has always run for a room shared by code. What's added here
+ * is only the lobby: which pool you're searching, how many racers are in it,
+ * and the shared countdown the server broadcasts.
+ */
+let mpMatchScope = null;      // "regional" | "global" while searching/lobbied
+let mpMatchStatus = null;     // latest matchStatus payload from the server
+
+// Regional matchmaking needs a region, and the one locality every browser will
+// tell us without a permission prompt is its time zone. The continent half of
+// an IANA zone ("Australia/Sydney" -> "Australia") is coarse, but it's honest,
+// free, and enough to keep a regional race regional.
+function localMatchRegion() {
+    try {
+        const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+        const region = zone.split("/")[0];
+        return region || "Global";
+    } catch (e) {
+        return "Global";
+    }
+}
+
+function mpMatchmake(scope) {
+    if (mpBusy()) {
+        mpStatus.textContent = "You're already in a room — leave it first.";
+        return;
+    }
+    if (localPlayerCount > 1) {
+        mpStatus.textContent = "Switch to 1 Player before racing online.";
+        return;
+    }
+    mpMatchScope = scope;
+    mpMatchStatus = null;
+    mpSyncOnlineLobby("Searching for racers\u2026");
+    mpConnect(() => {
+        mpSocket.send(JSON.stringify({
+            type: "matchmake",
+            scope,
+            region: localMatchRegion(),
+            name: mpPlayerName(),
+            color: mpLocalRacerColor(),
+            avatar: mpLocalAvatar(),
+        }));
+    });
+}
+
+function mpSyncOnlineLobby(overrideText) {
+    const statusEl = document.getElementById("onlineStatus");
+    const listEl = document.getElementById("onlineRacerList");
+    if (!statusEl) return;
+    if (overrideText) {
+        statusEl.textContent = overrideText;
+        if (listEl) listEl.textContent = "";
+        return;
+    }
+    if (!mpConnected || !mpMatchScope) {
+        statusEl.textContent = "Pick a pool to start searching.";
+        if (listEl) listEl.textContent = "";
+        return;
+    }
+    const info = mpMatchStatus;
+    const where = mpMatchScope === "regional" ? `Regional \u00b7 ${info?.region || localMatchRegion()}` : "Global";
+    const count = info?.players ?? 1;
+    const max = info?.max ?? 12;
+    if (info && info.startsIn) {
+        statusEl.textContent = `${where} \u2014 ${count}/${max} racers \u00b7 starting in ${info.startsIn}s`;
+    } else if (count < (info?.min ?? 2)) {
+        statusEl.textContent = `${where} \u2014 waiting for another racer\u2026 (${count}/${max})`;
+    } else {
+        statusEl.textContent = `${where} \u2014 ${count}/${max} racers`;
+    }
+    if (listEl) {
+        const names = [mpPlayerName(), ...Array.from(mpPeers.values()).map((p) => p.name)];
+        listEl.textContent = names.join(" \u00b7 ");
+    }
+}
+
+// When the server's shared countdown reaches zero it only *signals* — the host
+// client still chooses the track and sends the real raceStart, exactly as it
+// does for a room shared by code. Online races randomise the track so a pool of
+// strangers doesn't race whatever the first person in happened to have picked.
+function mpHandleMatchGo() {
+    if (!mpIsHost) {
+        mpSyncOnlineLobby("Race starting\u2026");
+        return;
+    }
+    resetCupSelection();
+    const keys = Object.keys(maps);
+    setMap(keys[Math.floor(Math.random() * keys.length)]);
+    mpSyncOnlineLobby("Race starting\u2026");
+    startRace();
+}
+
 function mpLeave() {
     if (!mpSocket) return;
     mpStatusNotice = "You left the room.";
@@ -8798,6 +9419,17 @@ function mpHandleMessage(msg) {
         mpAddChatLine(null, `${leftName} left the race.`, true);
     } else if (msg.type === "state") {
         mpLatestState.set(msg.id, msg);
+    } else if (msg.type === "matchStatus") {
+        mpMatchStatus = msg;
+        mpSyncOnlineLobby();
+    } else if (msg.type === "matchGo") {
+        mpHandleMatchGo();
+    } else if (msg.type === "hostPromoted") {
+        // the racer who opened this matchmade room left; we own the track
+        // choice and the raceStart now
+        mpIsHost = true;
+        mpUpdateUI();
+        mpAddChatLine(null, "You're the host now.", true);
     } else if (msg.type === "raceStart") {
         mpApplyRaceStart(msg);
     } else if (msg.type === "chat") {

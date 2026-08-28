@@ -22,6 +22,12 @@ const {
 const PORT = process.env.PORT || 1764;
 const ROOT = __dirname;
 const ROOM_MAX_PLAYERS = 20; // Gun Game Arena supports team sizes up to 10v10
+// Public matchmaking (Kart Circuit's Play Online). Distinct from ROOM_MAX_PLAYERS
+// because a matchmade race fills itself — 12 is a grid people actually want to
+// race on, where 20 strangers would mean a permanently crowded track.
+const MATCH_MAX_PLAYERS = 12;
+const MATCH_MIN_PLAYERS = 2;      // below this nobody is waiting for a countdown
+const MATCH_COUNTDOWN_SECONDS = 25; // from reaching MIN, so late joiners still get in
 const ROOM_TTL_MS = 4 * 60 * 60 * 1000;
 
 // Voice chat (getUserMedia) only works in "secure contexts" — HTTPS, or plain
@@ -1539,6 +1545,69 @@ function sanitizeAvatar(value) {
   return value;
 }
 
+/* Public matchmaking for Kart Circuit's Play Online.
+ *
+ * Deliberately built on top of the existing room system rather than beside it:
+ * a matchmade race *is* an ordinary room, so every client path that already
+ * works — the `joined` reply, playerJoined/playerLeft, state relay, raceStart,
+ * WebRTC signalling — is reused untouched. All matchmaking adds is (a) a way to
+ * be put into a suitable room without knowing its code, and (b) the metadata
+ * needed to decide which room is suitable.
+ *
+ * Kept out of the `rooms` Map's value shape on purpose: that value is a plain
+ * Map of players, and several places iterate it expecting exactly that
+ * (findRoomForProfileKey, roomPlayerList, broadcast). Metadata lives alongside,
+ * keyed by the same room code.
+ */
+const roomMeta = new Map(); // roomCode -> { scope, region, open, countdown, hostId }
+
+// "Regional" needs some notion of where a player is, and the one thing every
+// browser reports without a permission prompt or a geo-IP service is its IANA
+// time zone. The continent prefix of that ("Australia/Sydney" -> "Australia")
+// is a coarse but honest region: close enough that a regional match really does
+// mean lower latency, and it costs nothing to obtain.
+const MATCH_REGIONS = new Set(["Africa", "America", "Antarctica", "Arctic", "Asia", "Atlantic", "Australia", "Europe", "Indian", "Pacific"]);
+function sanitizeRegion(value) {
+  const region = typeof value === "string" ? value.trim() : "";
+  return MATCH_REGIONS.has(region) ? region : "Global";
+}
+
+// A room is joinable by matchmaking only while it's in the same bucket, still
+// filling, and hasn't started — once a race begins, `open` goes false so nobody
+// is dropped onto a track mid-lap.
+function findOpenMatchRoom(scope, region) {
+  for (const [code, meta] of roomMeta) {
+    if (!meta.open || meta.scope !== scope) continue;
+    if (scope === "regional" && meta.region !== region) continue;
+    const room = rooms.get(code);
+    if (!room || room.size === 0 || room.size >= MATCH_MAX_PLAYERS) continue;
+    return { code, room, meta };
+  }
+  return null;
+}
+
+function matchStatusPayload(code) {
+  const room = rooms.get(code);
+  const meta = roomMeta.get(code);
+  if (!room || !meta) return null;
+  return {
+    type: "matchStatus",
+    room: code,
+    scope: meta.scope,
+    region: meta.region,
+    players: room.size,
+    max: MATCH_MAX_PLAYERS,
+    min: MATCH_MIN_PLAYERS,
+    startsIn: meta.countdown,
+  };
+}
+
+function broadcastMatchStatus(code) {
+  const payload = matchStatusPayload(code);
+  const room = rooms.get(code);
+  if (payload && room) broadcast(room, payload);
+}
+
 function makeRoomCode() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let code;
@@ -1596,6 +1665,51 @@ wss.on("connection", (ws) => {
       return;
     }
 
+    if (msg.type === "matchmake") {
+      // Put the caller into a suitable public room, creating one if there
+      // isn't a suitable one yet. Either branch replies with exactly the same
+      // `joined` message host/join send, so the client needs no separate
+      // "I matchmade" code path — it's in a room, same as always.
+      const scope = msg.scope === "regional" ? "regional" : "global";
+      const region = sanitizeRegion(msg.region);
+      const existing = findOpenMatchRoom(scope, region);
+      const player = {
+        ws,
+        name: msg.name || "Racer",
+        color: msg.color || "#53e0ff",
+        avatar: sanitizeAvatar(msg.avatar),
+        profileKey: typeof msg.profileKey === "string" ? msg.profileKey : null,
+      };
+
+      if (existing) {
+        joinedRoom = existing.room;
+        roomCode = existing.code;
+        joinedRoom.set(clientId, player);
+        // isHost stays with whoever opened the room: one client has to own the
+        // track choice and the actual raceStart, and that's already how every
+        // other room here works.
+        ws.send(JSON.stringify({ type: "joined", id: clientId, room: roomCode, isHost: false, matchmade: true, players: roomPlayerList(joinedRoom) }));
+        broadcast(joinedRoom, { type: "playerJoined", id: clientId, name: player.name, color: player.color, avatar: player.avatar }, clientId);
+      } else {
+        roomCode = makeRoomCode();
+        joinedRoom = new Map();
+        rooms.set(roomCode, joinedRoom);
+        roomMeta.set(roomCode, { scope, region, open: true, countdown: null, hostId: clientId });
+        joinedRoom.set(clientId, player);
+        ws.send(JSON.stringify({ type: "joined", id: clientId, room: roomCode, isHost: true, matchmade: true, players: roomPlayerList(joinedRoom) }));
+      }
+
+      // Reaching the minimum arms the countdown; it is never re-armed or
+      // extended by later arrivals, so a room that keeps filling still starts
+      // on schedule instead of being held open indefinitely.
+      const meta = roomMeta.get(roomCode);
+      if (meta && meta.countdown === null && joinedRoom.size >= MATCH_MIN_PLAYERS) {
+        meta.countdown = MATCH_COUNTDOWN_SECONDS;
+      }
+      broadcastMatchStatus(roomCode);
+      return;
+    }
+
     if (msg.type === "join") {
       const code = String(msg.room || "").toUpperCase();
       const room = rooms.get(code);
@@ -1625,6 +1739,13 @@ wss.on("connection", (ws) => {
     }
 
     if (msg.type === "raceStart") {
+      // Close the room to matchmaking the moment its race begins — otherwise
+      // the next player to search would be dropped onto a track mid-lap.
+      const meta = roomMeta.get(roomCode);
+      if (meta) {
+        meta.open = false;
+        meta.countdown = null;
+      }
       msg.id = clientId;
       broadcast(joinedRoom, msg, clientId);
       return;
@@ -1657,14 +1778,60 @@ wss.on("connection", (ws) => {
     broadcast(joinedRoom, { type: "playerLeft", id: clientId }, clientId);
     if (joinedRoom.size === 0) {
       rooms.delete(roomCode);
+      roomMeta.delete(roomCode);
+      return;
     }
+    const meta = roomMeta.get(roomCode);
+    if (!meta) return;
+    // A matchmade room is full of strangers, so it can't be left leaderless the
+    // way a room shared by code can — somebody has to own the track choice and
+    // send the raceStart. The longest-present remaining racer takes over.
+    if (meta.hostId === clientId) {
+      const nextHostId = Array.from(joinedRoom.keys()).sort((a, b) => Number(a) - Number(b))[0];
+      meta.hostId = nextHostId;
+      const nextHost = joinedRoom.get(nextHostId);
+      if (nextHost && nextHost.ws.readyState === nextHost.ws.OPEN) {
+        nextHost.ws.send(JSON.stringify({ type: "hostPromoted", room: roomCode }));
+      }
+    }
+    broadcastMatchStatus(roomCode);
   });
 });
+
+/* Drives the pre-race countdown for public matchmaking rooms. The server owns
+ * the clock (not the host client) so every racer in the room sees the same
+ * number, and so a host who alt-tabs can't stall the lobby. At zero it only
+ * *signals* — the host client still picks the track and sends the real
+ * raceStart, which is what every other client already listens for. */
+setInterval(() => {
+  roomMeta.forEach((meta, code) => {
+    if (!meta.open || meta.countdown === null) return;
+    const room = rooms.get(code);
+    if (!room) return;
+    if (room.size < MATCH_MIN_PLAYERS) {
+      // dropped back below the minimum (someone left) — disarm and wait again
+      meta.countdown = null;
+      broadcastMatchStatus(code);
+      return;
+    }
+    meta.countdown -= 1;
+    if (meta.countdown > 0) {
+      broadcastMatchStatus(code);
+      return;
+    }
+    meta.countdown = null;
+    meta.open = false;
+    broadcast(room, { type: "matchGo", room: code });
+  });
+}, 1000);
 
 // periodic sweep for abandoned empty rooms (defensive; close handler already covers the normal path)
 setInterval(() => {
   rooms.forEach((room, code) => {
-    if (room.size === 0) rooms.delete(code);
+    if (room.size === 0) {
+      rooms.delete(code);
+      roomMeta.delete(code);
+    }
   });
 }, ROOM_TTL_MS);
 
