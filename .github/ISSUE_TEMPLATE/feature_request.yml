@@ -1,0 +1,32 @@
+name: Idea or new game
+description: Suggest a feature, or a game you'd like to see added
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What's the idea?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why would it be good?
+      description: What would it let someone do that they can't do now?
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of thing is it?
+      options:
+        - A new game
+        - A change to an existing game
+        - Something about the hub itself (menus, profiles, keys, multiplayer)
+        - Something else
+    validations:
+      required: true
+  - type: checkboxes
+    id: offer
+    attributes:
+      label: Would you like to build it?
+      options:
+        - label: I'd be up for having a go at this myself

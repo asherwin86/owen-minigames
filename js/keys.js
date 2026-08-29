@@ -36,6 +36,20 @@
     }
   }
 
+  function session() {
+    try {
+      return JSON.parse(localStorage.getItem("mimiActiveSession") || "null");
+    } catch (e) {
+      return null;
+    }
+  }
+  // Same dev test the rest of the hub uses: a real, server-verified dev
+  // account (dev signup is password-gated in server.js), not a client-side
+  // checkbox anyone could tick.
+  function isDev() {
+    return Boolean(session() && session().dev);
+  }
+
   function today() {
     // Local date, not UTC: "a day" should mean the player's day, so the reward
     // resets overnight where they are rather than at some hour of the afternoon.
@@ -72,9 +86,22 @@
       /* private mode or a full quota — the game still plays, you just don't
          accumulate keys, which is better than throwing mid-match */
     }
+    publish(state.balance);
     listeners.forEach((fn) => {
       try { fn(state.balance); } catch (err) { /* one bad listener shouldn't stop the rest */ }
     });
+  }
+
+  /* The keys leaderboard rides on the hub's existing leaderboard system rather
+   * than a new API: profiles.js already has a submit/read pair backed by the
+   * server, and "keys" is just another board id to it. Silently a no-op when
+   * nobody's signed in, exactly like every other leaderboard here. */
+  const BOARD_ID = "keys";
+  let lastPublished = null;
+  function publish(balance) {
+    if (balance === lastPublished) return;
+    lastPublished = balance;
+    window.MimiProfiles?.submitScore?.(BOARD_ID, balance, "desc");
   }
 
   /* Called when a game is opened. Returns the number of keys just awarded, so
@@ -124,6 +151,19 @@
       write(state);
       return true;
     },
+    /* Dev only. Guarded here as well as in the UI, because a function that
+     * rewrites the balance shouldn't be callable from the console by anyone who
+     * happens to find it. */
+    devSet(amount) {
+      if (!isDev()) return false;
+      const state = read();
+      const next = Math.max(0, Math.floor(amount));
+      if (next > state.balance) state.earned += next - state.balance;
+      state.balance = next;
+      write(state);
+      return true;
+    },
+    isDev,
     add(amount) {
       const state = read();
       state.balance += Math.max(0, Math.floor(amount));
@@ -169,10 +209,10 @@
     const overlay = document.createElement("div");
     overlay.className = "updates-overlay keys-overlay";
     overlay.innerHTML = `
-      <div class="updates-card" style="max-width:520px">
-        <button class="help-close" type="button" aria-label="Close">✕</button>
+      <div class="updates-card" style="max-width:540px">
+        <button class="help-close" type="button" aria-label="Close">\u2715</button>
         <div class="updates-header">
-          <span class="updates-emoji">🔑</span>
+          <span class="updates-emoji">\u{1F511}</span>
           <div><h2>Keys</h2><p class="help-meta">Earn them by playing, spend them in games</p></div>
         </div>
         <div class="updates-list">
@@ -182,17 +222,103 @@
             <p class="keys-quest-sub">Play ${p.target} different games in a day for ${p.reward} keys.</p>
             <div class="keys-bar"><i style="width:${Math.min(100, (p.played / p.target) * 100)}%"></i></div>
             <p class="keys-quest-state">${p.awarded
-              ? `✅ Claimed today — come back tomorrow for ${p.reward} more.`
+              ? `\u2705 Claimed today \u2014 come back tomorrow for ${p.reward} more.`
               : `${p.played} of ${p.target} games played today.`}</p>
           </div>
           <p class="keys-note">Spend keys in <strong>Rival Arena</strong> to open crates and unlock weapon skins. More games will take them later.</p>
-          <p class="keys-note keys-note-dim">Earned all-time: ${p.earned} · Spent: ${p.spent}</p>
+          <div class="keys-board">
+            <p class="keys-quest-title">\u{1F3C6} Top key holders</p>
+            <div class="keys-board-body"><p class="profile-status">Loading\u2026</p></div>
+          </div>
+          <div class="keys-dev"></div>
+          <p class="keys-note keys-note-dim">Earned all-time: ${p.earned} \u00b7 Spent: ${p.spent}</p>
         </div>
       </div>`;
     document.body.appendChild(overlay);
     const close = () => overlay.remove();
     overlay.querySelector(".help-close").addEventListener("click", close);
     overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+
+    renderBoard(overlay.querySelector(".keys-board-body"));
+    renderDevTools(overlay.querySelector(".keys-dev"), overlay);
+  }
+
+  /* The board is the hub's ordinary leaderboard system read back under the
+   * "keys" id — so it needs an account and a server, and says so plainly rather
+   * than showing an empty list when neither is available. */
+  async function renderBoard(host) {
+    if (!host) return;
+    if (!window.MimiProfiles?.getLeaderboardTop) {
+      host.innerHTML = "";
+      const note = document.createElement("p");
+      note.className = "profile-note";
+      note.textContent = "Leaderboards need the full hosted version.";
+      host.appendChild(note);
+      return;
+    }
+    const mine = window.MimiProfiles.getSessionKey?.();
+    const result = await window.MimiProfiles.getLeaderboardTop(BOARD_ID, 20);
+    host.innerHTML = "";
+    if (!result || !result.ok) {
+      const note = document.createElement("p");
+      note.className = "profile-note";
+      note.textContent = mine ? "Couldn't load the board right now." : "Sign in to appear on the board.";
+      host.appendChild(note);
+      return;
+    }
+    if (!result.entries.length) {
+      const note = document.createElement("p");
+      note.className = "profile-note";
+      note.textContent = "Nobody's on this board yet \u2014 be the first.";
+      host.appendChild(note);
+      return;
+    }
+    result.entries.forEach((entry, i) => {
+      const row = document.createElement("div");
+      row.className = "keys-row" + (entry.key === mine ? " is-me" : "");
+      const rank = document.createElement("span");
+      rank.className = "keys-rank";
+      rank.textContent = ["\u{1F947}", "\u{1F948}", "\u{1F949}"][i] || `${i + 1}`;
+      const name = document.createElement("strong");
+      name.textContent = entry.name || "Player";
+      const score = document.createElement("span");
+      score.className = "keys-score";
+      score.textContent = `\u{1F511} ${entry.score}`;
+      row.append(rank, name, score);
+      host.appendChild(row);
+    });
+  }
+
+  /* Dev tools. Only a real, server-verified dev account sees these — the same
+   * gate Kart Circuit's cheats and the hub's admin panel use. They exist so the
+   * crate economy can be exercised without grinding five games a day first. */
+  function renderDevTools(host, overlay) {
+    if (!host || !isDev()) return;
+    host.innerHTML = `
+      <p class="keys-quest-title">\u{1F6E0}\uFE0F Dev tools</p>
+      <p class="keys-quest-sub">Only you can see this \u2014 it's gated on a verified dev account.</p>
+      <div class="keys-dev-row">
+        <input type="number" min="0" step="1" value="${window.MimiKeys.balance()}" aria-label="Set key balance" />
+        <button type="button" class="btn" data-act="set">Set</button>
+        <button type="button" class="btn" data-act="give">+25</button>
+        <button type="button" class="btn" data-act="zero">Clear</button>
+      </div>`;
+    const input = host.querySelector("input");
+    const refresh = () => {
+      input.value = window.MimiKeys.balance();
+      const b = overlay.querySelector(".keys-balance span");
+      if (b) b.textContent = window.MimiKeys.balance();
+      renderBoard(overlay.querySelector(".keys-board-body"));
+    };
+    host.querySelectorAll("button").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const act = btn.dataset.act;
+        if (act === "set") window.MimiKeys.devSet(Number(input.value) || 0);
+        if (act === "give") window.MimiKeys.devSet(window.MimiKeys.balance() + 25);
+        if (act === "zero") window.MimiKeys.devSet(0);
+        refresh();
+      });
+    });
   }
 
   function syncButton() {

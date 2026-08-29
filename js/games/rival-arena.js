@@ -23,7 +23,7 @@ MimiGames.register({
   tags: ["3D"],
   players: "1P",
   howTo:
-    "A fast 3D arena shooter against bots. Click the arena to lock the mouse, then WASD to move, mouse to aim, left-click to fire, R to reload, Shift to sprint, Ctrl to crouch, Space to jump. 1-4 swap weapons — SMG, Rifle, Shotgun and Sniper all handle differently, so check the stats in the lobby. First to the elimination target wins the match; kills in quick succession build a streak. Esc pauses. Spend 🔑 keys in the lobby's crate to unlock weapon skins — you earn keys by playing 5 different games in a day anywhere in the hub.",
+    "A fast 3D arena shooter against bots. Click the arena to lock the mouse, then WASD to move, mouse to aim, left-click to fire, right-click to aim down sights, R to reload, Shift to sprint, Ctrl to crouch, Space to jump. 1-4 swap weapons — SMG, Rifle, Shotgun and Sniper all handle differently, and the Sniper gets a real scope. Aiming tightens your spread a lot, so it's worth it on every gun. Gamepad: left stick moves, right stick looks, RT fires, LT aims, A jumps, X reloads, LB/RB swap weapons, Start pauses. Touch: drag the left half to move, the right half to look, and use the buttons for fire, aim, jump, reload and swap. Gamepad and touch both get aim assist, the same way a console shooter does — mouse and keyboard don't, because they don't need it. First to the elimination target wins; kills in quick succession build a streak. Esc pauses. Spend 🔑 keys in the lobby's crate to unlock weapon skins — you earn keys by playing 5 different games in a day anywhere in the hub.",
 
   init(root, ctx) {
     const gameView = document.getElementById("gameView");
@@ -32,10 +32,10 @@ MimiGames.register({
     /* ------------------------------------------------------------- weapons */
     // rpm drives the fire interval; spread is radians of cone at the muzzle.
     const WEAPONS = [
-      { id: "smg", name: "SMG", emoji: "🔫", damage: 17, rpm: 750, spread: 0.036, mag: 30, reload: 1.5, auto: true, pellets: 1, range: 60, recoil: 0.010 },
-      { id: "rifle", name: "Rifle", emoji: "🎖️", damage: 28, rpm: 420, spread: 0.017, mag: 24, reload: 1.9, auto: true, pellets: 1, range: 110, recoil: 0.016 },
-      { id: "shotgun", name: "Shotgun", emoji: "💥", damage: 13, rpm: 105, spread: 0.10, mag: 6, reload: 2.4, auto: false, pellets: 8, range: 28, recoil: 0.05 },
-      { id: "sniper", name: "Sniper", emoji: "🎯", damage: 95, rpm: 48, spread: 0.002, mag: 5, reload: 2.7, auto: false, pellets: 1, range: 200, recoil: 0.07 },
+      { id: "smg", name: "SMG", emoji: "🔫", damage: 17, rpm: 750, spread: 0.036, mag: 30, reload: 1.5, auto: true, pellets: 1, range: 60, recoil: 0.010, adsFov: 55 },
+      { id: "rifle", name: "Rifle", emoji: "🎖️", damage: 28, rpm: 420, spread: 0.017, mag: 24, reload: 1.9, auto: true, pellets: 1, range: 110, recoil: 0.016, adsFov: 45 },
+      { id: "shotgun", name: "Shotgun", emoji: "💥", damage: 13, rpm: 105, spread: 0.10, mag: 6, reload: 2.4, auto: false, pellets: 8, range: 28, recoil: 0.05, adsFov: 62 },
+      { id: "sniper", name: "Sniper", emoji: "🎯", damage: 95, rpm: 48, spread: 0.002, mag: 5, reload: 2.7, auto: false, pellets: 1, range: 200, recoil: 0.07, adsFov: 16, scope: true },
     ];
 
     // Rarity drives both the odds and how loud the reveal is.
@@ -161,6 +161,26 @@ MimiGames.register({
         .ra-dmg { position: absolute; font-weight: 900; font-size: 1rem; color: #ffd166; text-shadow: 0 2px 5px #000;
                   pointer-events: none; }
         .ra-load { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-dim); z-index: 8; }
+        /* Scoped sniper: a black surround with a thin ring and cross, which is
+           what actually reads as "looking down a scope" rather than a zoom. */
+        .ra-scope { position: absolute; inset: 0; opacity: 0; transition: opacity .12s; pointer-events: none;
+                    background: radial-gradient(circle at 50% 50%, transparent 0 26%, rgba(0,0,0,.97) 27%); }
+        .ra-scope.on { opacity: 1; }
+        .ra-scope i { position: absolute; inset: 0; }
+        .ra-scope i::before, .ra-scope i::after { content: ""; position: absolute; background: rgba(255,255,255,.5); }
+        .ra-scope i::before { left: 50%; top: 0; bottom: 0; width: 1px; }
+        .ra-scope i::after { top: 50%; left: 0; right: 0; height: 1px; }
+        /* The crosshair tightens as you aim, which is the readout for spread. */
+        .ra-hud.ra-aiming .ra-cross i:nth-child(1) { top: 4px; height: 4px; }
+        .ra-hud.ra-aiming .ra-cross i:nth-child(2) { bottom: 4px; height: 4px; }
+        .ra-hud.ra-aiming .ra-cross i:nth-child(3) { left: 4px; width: 4px; }
+        .ra-hud.ra-aiming .ra-cross i:nth-child(4) { right: 4px; width: 4px; }
+        .ra-cross i { transition: all .12s; }
+        .ra-touch { position: absolute; right: 12px; bottom: 12px; display: flex; gap: 8px; z-index: 4; }
+        .ra-touch button { width: 54px; height: 54px; border-radius: 50%; border: 2px solid rgba(255,255,255,.3);
+                           background: rgba(10,14,24,.66); color: #fff; font-size: 1.2rem; }
+        .ra-touch button.ra-fire { width: 72px; height: 72px; background: rgba(255,90,90,.34); }
+        .ra-touch button.on { border-color: #ffd166; background: rgba(255,209,102,.3); }
         .ra-reveal { text-align: center; padding: 8px 0 4px; }
         .ra-reveal-chip { display: inline-block; padding: 6px 16px; border-radius: 999px; font-weight: 900;
                           color: #10141c; margin-bottom: 8px; }
@@ -207,7 +227,7 @@ MimiGames.register({
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(0x121a2a);
       scene.fog = new THREE.Fog(0x121a2a, 40, 150);
-      const camera = new THREE.PerspectiveCamera(80, 16 / 9, 0.1, 400);
+      const camera = new THREE.PerspectiveCamera(80, 16 / 9, 0.1, 400); // FOV is driven by aiming, see HIP_FOV
       const gunCamera = new THREE.PerspectiveCamera(60, 16 / 9, 0.01, 10);
 
       scene.add(new THREE.HemisphereLight(0x9fc4ff, 0x2a2f3a, 0.9));
@@ -226,6 +246,7 @@ MimiGames.register({
         <div class="ra-streak"></div>
         <div class="ra-left"><div class="ra-hplabel">100 HP</div><div class="ra-hpbar"><i style="width:100%"></i></div></div>
         <div class="ra-bottom"><div class="ra-ammo">30<small>/30</small></div><div class="ra-gunname">SMG</div></div>
+        <div class="ra-scope"><i></i></div>
         <div class="ra-hint">Click to lock the mouse</div>`;
       wrap.appendChild(hud);
       const el = {
@@ -238,6 +259,7 @@ MimiGames.register({
         ammo: hud.querySelector(".ra-ammo"),
         gunName: hud.querySelector(".ra-gunname"),
         hint: hud.querySelector(".ra-hint"),
+        scope: hud.querySelector(".ra-scope"),
       };
 
       const panel = document.createElement("div");
@@ -315,7 +337,10 @@ MimiGames.register({
         hp: 100, onGround: true, crouch: false, weapon: 0,
         ammo: WEAPONS.map((w) => w.mag), reloading: 0, lastShot: 0,
         kills: 0, deaths: 0, streak: 0, lastKill: 0, recoil: 0,
+        ads: 0,      // 0..1, how far scoped in — animated, not a boolean, so
+                     // the zoom and the gun sliding to centre can ease
       };
+      const HIP_FOV = 80;
       const EYE = 1.62, CROUCH_EYE = 1.05, RADIUS = 0.42;
       let mode = MODES.standard;
       let botScore = 0;
@@ -418,6 +443,14 @@ MimiGames.register({
       /* --------------------------------------------------------------- input */
       const keys = new Set();
       let firing = false;
+      let aiming = false;
+      /* Which device is actually being used. Aim assist is deliberately only
+       * applied for a gamepad or a touchscreen — that's the bargain every
+       * console shooter makes, because a thumbstick and a thumb simply cannot
+       * match a mouse for fine aim. Giving it to a mouse player too would just
+       * be an aimbot. It flips the moment you use a different device, so
+       * picking up a controller mid-match works without a setting. */
+      let inputMode = "mouse";
 
       on(window, "keydown", (e) => {
         if (!running) return;
@@ -430,20 +463,27 @@ MimiGames.register({
       on(window, "keyup", (e) => keys.delete(e.code));
       on(canvas, "mousedown", (e) => {
         if (!running) return;
+        inputMode = "mouse";
         if (document.pointerLockElement !== canvas) { canvas.requestPointerLock(); return; }
         if (e.button === 0) { firing = true; tryShoot(); }
+        if (e.button === 2) aiming = true;
       });
-      on(window, "mouseup", () => { firing = false; });
+      on(window, "mouseup", (e) => {
+        if (e.button === 2) aiming = false; else firing = false;
+      });
       on(canvas, "contextmenu", (e) => e.preventDefault());
       on(document, "pointerlockchange", () => {
         const locked = document.pointerLockElement === canvas;
         el.hint.classList.toggle("off", locked);
-        if (!locked) firing = false;
+        if (!locked) { firing = false; aiming = false; }
       });
       on(document, "mousemove", (e) => {
         if (document.pointerLockElement !== canvas) return;
-        P.yaw -= e.movementX * 0.0022;
-        P.pitch = Math.max(-1.5, Math.min(1.5, P.pitch - e.movementY * 0.0022));
+        inputMode = "mouse";
+        // Aiming slows the look speed, which is what makes a scope usable.
+        const sens = 0.0022 * (1 - P.ads * 0.55);
+        P.yaw -= e.movementX * sens;
+        P.pitch = Math.max(-1.5, Math.min(1.5, P.pitch - e.movementY * sens));
       });
       on(canvas, "wheel", (e) => {
         if (!running) return;
@@ -531,7 +571,8 @@ MimiGames.register({
 
         const origin = new THREE.Vector3(P.x, P.y, P.z);
         for (let pellet = 0; pellet < w.pellets; pellet += 1) {
-          const spread = w.spread * (keys.has("ShiftLeft") ? 1.7 : 1);
+          // Hip-fire is loose, aimed is tight — the entire reason to scope in.
+          const spread = w.spread * (keys.has("ShiftLeft") ? 1.7 : 1) * (1 - P.ads * 0.72);
           const dir = new THREE.Vector3(
             -Math.sin(P.yaw) * Math.cos(P.pitch) + (Math.random() - 0.5) * spread,
             Math.sin(P.pitch) + (Math.random() - 0.5) * spread,
@@ -817,6 +858,171 @@ MimiGames.register({
         showLobby(`Paused — you're ${P.kills}–${botScore}.`);
       }
 
+      /* ------------------------------------------------------------- gamepad
+       * Polled rather than event-driven, because the Gamepad API has no events
+       * for axes — you read the current state each frame or you read nothing.
+       * The hub's own pad cursor (js/pad-cursor.js) drives menus; this is the
+       * in-match read, and it only runs while a match is live so the two never
+       * fight over the same stick. */
+      let assistFriction = 1;   // declared here because readGamepad() below reads it
+      const PAD = { fire: 7, ads: 6, jump: 0, reload: 2, prev: 4, next: 5, pause: 9, crouch: 10 };
+      let padPrev = {};
+      function readGamepad(dt) {
+        const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+        let pad = null;
+        for (let i = 0; i < pads.length; i += 1) if (pads[i] && pads[i].connected) { pad = pads[i]; break; }
+        if (!pad) return null;
+
+        // Sticks rest slightly off centre on most pads, so anything inside the
+        // deadzone is thrown away; the cube curve then gives fine control near
+        // the middle and full speed at the edge.
+        const dead = (v) => (Math.abs(v) < 0.18 ? 0 : (v - Math.sign(v) * 0.18) / 0.82);
+        const curve = (v) => v * v * v;
+        const lx = dead(pad.axes[0] || 0);
+        const ly = dead(pad.axes[1] || 0);
+        const rx = dead(pad.axes[2] || 0);
+        const ry = dead(pad.axes[3] || 0);
+        if (lx || ly || rx || ry) inputMode = "pad";
+
+        const held = (i) => Boolean(pad.buttons[i] && pad.buttons[i].pressed);
+        const tapped = (i) => { const now = held(i); const was = padPrev[i]; padPrev[i] = now; return now && !was; };
+        // Triggers report as analog on most pads; treat a light pull as held.
+        const trigger = (i) => (pad.buttons[i] ? pad.buttons[i].value > 0.3 || pad.buttons[i].pressed : false);
+
+        if (held(PAD.fire) || trigger(PAD.fire)) { inputMode = "pad"; if (!firing) { firing = true; tryShoot(); } }
+        else if (firing && inputMode === "pad") firing = false;
+        aiming = trigger(PAD.ads) || held(PAD.ads) ? true : (inputMode === "pad" ? false : aiming);
+        if (tapped(PAD.jump)) keys.add("Space"); else if (!held(PAD.jump)) keys.delete("Space");
+        if (tapped(PAD.reload)) startReload();
+        if (tapped(PAD.prev)) switchWeapon((P.weapon - 1 + WEAPONS.length) % WEAPONS.length);
+        if (tapped(PAD.next)) switchWeapon((P.weapon + 1) % WEAPONS.length);
+        if (tapped(PAD.pause)) { pause(); return null; }
+        if (held(PAD.crouch)) keys.add("ControlLeft"); else keys.delete("ControlLeft");
+
+        // assistFriction is set by aimAssist() from the previous frame — one
+        // frame of lag is imperceptible and avoids ordering the two passes.
+        const look = 2.6 * (1 - P.ads * 0.5) * assistFriction * dt;
+        P.yaw -= curve(rx) * look * 1.6;
+        P.pitch = Math.max(-1.5, Math.min(1.5, P.pitch - curve(ry) * look));
+        return { moveX: lx, moveZ: -ly };
+      }
+
+      /* ---------------------------------------------------------- aim assist
+       * What a console shooter actually means by "aim assist": not a bot that
+       * snaps to heads, but two gentle nudges that make a thumbstick or a thumb
+       * competitive with a mouse.
+       *
+       *   1. friction — when the crosshair is already near an enemy, look speed
+       *      is scaled down so you don't slide straight past them
+       *   2. magnetism — a slow pull toward the nearest visible enemy inside a
+       *      narrow cone, strong enough to help and far too weak to aim for you
+       *
+       * Only ever applied for pad and touch (see inputMode), never for a mouse.
+       * It also refuses to help through walls, so it can't reveal anyone. */
+      const ASSIST_CONE = 0.16;     // radians; roughly a thumb's width on screen
+      function aimAssist(dt) {
+        assistFriction = 1;
+        if (inputMode === "mouse") return;
+        const origin = new THREE.Vector3(P.x, P.y, P.z);
+        const aim = new THREE.Vector3(
+          -Math.sin(P.yaw) * Math.cos(P.pitch), Math.sin(P.pitch), -Math.cos(P.yaw) * Math.cos(P.pitch),
+        );
+        let best = null;
+        let bestAngle = ASSIST_CONE;
+        bots.forEach((bot) => {
+          if (!bot.alive) return;
+          const to = new THREE.Vector3(bot.x - P.x, bot.y + 0.35 - P.y, bot.z - P.z);
+          const dist = to.length();
+          if (dist > 70) return;
+          to.normalize();
+          const angle = Math.acos(Math.max(-1, Math.min(1, to.dot(aim))));
+          if (angle > bestAngle) return;
+          if (rayWorld(origin, to, dist) < dist - 0.8) return; // behind cover
+          bestAngle = angle;
+          best = { to, angle, dist };
+        });
+        if (!best) return;
+        // Closer to centre = more friction, so the crosshair settles rather
+        // than being dragged.
+        assistFriction = 0.45 + 0.55 * (best.angle / ASSIST_CONE);
+        const pull = (1 - best.angle / ASSIST_CONE) * (aiming ? 3.1 : 1.9) * dt;
+        const wantYaw = Math.atan2(-best.to.x, -best.to.z);
+        const wantPitch = Math.asin(Math.max(-1, Math.min(1, best.to.y)));
+        let dYaw = wantYaw - P.yaw;
+        while (dYaw > Math.PI) dYaw -= Math.PI * 2;
+        while (dYaw < -Math.PI) dYaw += Math.PI * 2;
+        P.yaw += dYaw * Math.min(1, pull);
+        P.pitch += (wantPitch - P.pitch) * Math.min(1, pull);
+      }
+
+      /* ----------------------------------------------------------- touch
+       * Left half of the screen drags to move, right half drags to look, with
+       * on-screen buttons for the rest. Multi-touch, so moving and looking at
+       * the same time works — tracking each touch by its identifier rather than
+       * assuming one finger. */
+      let touchMove = null;   // { id, ox, oy, x, y }
+      let touchLook = null;
+      function bindTouch() {
+        const onStart = (e) => {
+          inputMode = "touch";
+          for (const t of e.changedTouches) {
+            const left = t.clientX - canvas.getBoundingClientRect().left < canvas.clientWidth / 2;
+            if (left && !touchMove) touchMove = { id: t.identifier, ox: t.clientX, oy: t.clientY, x: t.clientX, y: t.clientY };
+            else if (!left && !touchLook) touchLook = { id: t.identifier, x: t.clientX, y: t.clientY };
+          }
+          e.preventDefault();
+        };
+        const onMove = (e) => {
+          for (const t of e.changedTouches) {
+            if (touchMove && t.identifier === touchMove.id) { touchMove.x = t.clientX; touchMove.y = t.clientY; }
+            if (touchLook && t.identifier === touchLook.id) {
+              const look = 0.005 * (1 - P.ads * 0.5) * assistFriction;
+              P.yaw -= (t.clientX - touchLook.x) * look;
+              P.pitch = Math.max(-1.5, Math.min(1.5, P.pitch - (t.clientY - touchLook.y) * look));
+              touchLook.x = t.clientX; touchLook.y = t.clientY;
+            }
+          }
+          e.preventDefault();
+        };
+        const onEnd = (e) => {
+          for (const t of e.changedTouches) {
+            if (touchMove && t.identifier === touchMove.id) touchMove = null;
+            if (touchLook && t.identifier === touchLook.id) touchLook = null;
+          }
+        };
+        on(canvas, "touchstart", onStart, { passive: false });
+        on(canvas, "touchmove", onMove, { passive: false });
+        on(canvas, "touchend", onEnd);
+        on(canvas, "touchcancel", onEnd);
+
+        const bar = document.createElement("div");
+        bar.className = "ra-touch";
+        bar.innerHTML = `<button data-t="ads">\u{1F50D}</button><button data-t="jump">\u2B06</button>
+          <button data-t="reload">\u{1F504}</button><button data-t="swap">\u{1F52B}</button>
+          <button data-t="fire" class="ra-fire">\u{1F525}</button>`;
+        wrap.appendChild(bar);
+        bar.querySelectorAll("button").forEach((b) => {
+          const act = b.dataset.t;
+          const down = (e) => {
+            e.preventDefault();
+            inputMode = "touch";
+            if (act === "fire") { firing = true; tryShoot(); }
+            if (act === "ads") { aiming = !aiming; b.classList.toggle("on", aiming); }
+            if (act === "jump") keys.add("Space");
+            if (act === "reload") startReload();
+            if (act === "swap") switchWeapon((P.weapon + 1) % WEAPONS.length);
+          };
+          const up = () => { if (act === "fire") firing = false; if (act === "jump") keys.delete("Space"); };
+          b.addEventListener("touchstart", down, { passive: false });
+          b.addEventListener("touchend", up);
+          b.addEventListener("mousedown", down);
+          b.addEventListener("mouseup", up);
+        });
+      }
+      // Only built on a device that actually has a touchscreen, so a desktop
+      // player never gets a row of thumb buttons over their view.
+      if (window.matchMedia("(pointer: coarse)").matches || "ontouchstart" in window) bindTouch();
+
       /* ---------------------------------------------------------------- loop */
       function resize() {
         const w = wrap.clientWidth || 960;
@@ -839,16 +1045,47 @@ MimiGames.register({
         last = now;
         if (!running) { renderer.render(scene, camera); return; }
 
+        const padInput = readGamepad(dt);
+        if (!running) return;   // pause() may have fired from the pad this frame
+        aimAssist(dt);
+
+        // Scoping in and out is eased rather than snapped: the FOV change, the
+        // gun sliding to centre and the spread tightening all ride on this one
+        // number so they can never disagree with each other.
+        const wantAds = aiming && P.reloading <= 0 ? 1 : 0;
+        P.ads += (wantAds - P.ads) * Math.min(1, dt * 11);
+        const w0 = WEAPONS[P.weapon];
+        const wantFov = HIP_FOV + (w0.adsFov - HIP_FOV) * P.ads;
+        if (Math.abs(camera.fov - wantFov) > 0.05) {
+          camera.fov = wantFov;
+          camera.updateProjectionMatrix();
+        }
+        // A scoped sniper hides the viewmodel behind its scope overlay, the way
+        // every shooter does — you're looking down the tube, not at the gun.
+        const scoped = Boolean(w0.scope) && P.ads > 0.72;
+        gunGroup.visible = !scoped;
+        if (el.scope) el.scope.classList.toggle("on", scoped);
+        hud.classList.toggle("ra-aiming", P.ads > 0.5);
+
         /* player movement */
-        const sprint = keys.has("ShiftLeft") && !P.crouch;
+        const sprint = keys.has("ShiftLeft") && !P.crouch && P.ads < 0.3;
         P.crouch = keys.has("ControlLeft") || keys.has("KeyC");
-        const speed = (P.crouch ? 3 : sprint ? 9.5 : 6.4) * dt;
+        const speed = (P.crouch ? 3 : sprint ? 9.5 : 6.4) * (1 - P.ads * 0.45) * dt;
         let fx = 0, fz = 0;
         if (keys.has("KeyW") || keys.has("ArrowUp")) fz += 1;
         if (keys.has("KeyS") || keys.has("ArrowDown")) fz -= 1;
         if (keys.has("KeyA") || keys.has("ArrowLeft")) fx -= 1;
         if (keys.has("KeyD") || keys.has("ArrowRight")) fx += 1;
-        const len = Math.hypot(fx, fz) || 1;
+        if (padInput) { fx += padInput.moveX; fz += padInput.moveZ; }
+        if (touchMove) {
+          // Virtual stick: how far the finger has travelled from where it
+          // landed, capped so a long drag isn't faster than a short one.
+          const dxs = (touchMove.x - touchMove.ox) / 60;
+          const dys = (touchMove.y - touchMove.oy) / 60;
+          fx += Math.max(-1, Math.min(1, dxs));
+          fz += Math.max(-1, Math.min(1, -dys));
+        }
+        const len = Math.max(1, Math.hypot(fx, fz));
         const sin = Math.sin(P.yaw), cos = Math.cos(P.yaw);
         const dx = ((fz / len) * -sin + (fx / len) * cos) * speed;
         const dz = ((fz / len) * -cos - (fx / len) * sin) * speed;
@@ -871,6 +1108,7 @@ MimiGames.register({
         /* firing + reload */
         const w = WEAPONS[P.weapon];
         if (firing && w.auto) tryShoot();
+        else if (firing && !w.auto && inputMode !== "mouse") tryShoot(); // pad/touch hold-to-fire respects the weapon's own rate limit
         if (P.reloading > 0) {
           P.reloading -= dt;
           if (P.reloading <= 0) { P.reloading = 0; P.ammo[P.weapon] = w.mag; syncHud(); }

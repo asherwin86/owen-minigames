@@ -17,7 +17,10 @@
 // already-cached copy under its same URL. Bumping this forces every cached
 // entry (index.html included) to be dropped and re-fetched fresh on next
 // activation, same one-time reset any real cache-key change needs.
-const CACHE_NAME = "mimi-cache-v10";
+const CACHE_NAME = "mimi-cache-v12";
+
+// The one key every page load is cached under — see the navigate branch below.
+const SHELL_URL = new URL("index.html", self.registration.scope).href;
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
@@ -34,6 +37,40 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return; // POSTs (profiles, page-fetch proxy) always go live
+
+  /* Page loads are network-first; everything else stays cache-first.
+   *
+   * This used to be cache-first for absolutely everything, which is right for
+   * the ?v=-stamped assets (a new version is a new URL, so it can never go
+   * stale) but wrong for index.html, which has no version string of its own.
+   * The effect was that a deployed change didn't appear until CACHE_NAME
+   * happened to move AND the page was loaded twice — confirmed live: the server
+   * was serving a new hub while browsers kept showing the previous one.
+   *
+   * It got worse once games got their own URLs (/snake, /2048 — see
+   * resolvePrettyPath in server.js). Each of those is a separate cache key
+   * serving the same index.html, so a stale copy was pinned under 80-odd
+   * different keys instead of one.
+   *
+   * Network-first costs one request per page load and makes a deploy show up
+   * immediately; the cached copy is still there for offline, which is the
+   * reason any of this exists. */
+  if (request.mode === "navigate") {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.ok) {
+            const copy = response.clone();
+            // Stored under one key, not the URL that was asked for, so every
+            // game link shares the single offline shell.
+            caches.open(CACHE_NAME).then((cache) => cache.put(SHELL_URL, copy));
+          }
+          return response;
+        })
+        .catch(() => caches.match(SHELL_URL).then((cached) => cached || caches.match(request))),
+    );
+    return;
+  }
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return; // never cache the private page-fetch proxy's fetched pages, external assets, etc.
   if (url.pathname.startsWith("/api/")) return; // always live — profiles, the private page viewer, everything server-stateful
@@ -51,9 +88,8 @@ self.addEventListener("fetch", (event) => {
           return response;
         })
         .catch(() => {
-          // offline and never cached — for a page navigation, the shell is
-          // still better than a hard connection-error screen
-          if (request.mode === "navigate") return caches.match(new URL("index.html", self.registration.scope).href);
+          // navigations never reach here (handled above); anything else that's
+          // offline and was never cached genuinely has nothing to serve
           throw new Error("offline and not cached");
         });
     }),

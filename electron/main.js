@@ -23,6 +23,32 @@ const PORT_IN_USE_EXIT_CODE = 98;
 // inside the whenReady() handler below.
 app.disableHardwareAcceleration();
 
+/* Keep a portable build's data off the system drive.
+ *
+ * By default Electron saves to app.getPath("userData"), which on Windows is
+ * C:\Users\<you>\AppData\Roaming — and that is where Chromium's localStorage
+ * lives, so it holds the actual valuable things: profiles, keys, saved worlds,
+ * every game's progress. Fine for an installed app, wrong for a portable one:
+ * you copy the .exe to a D: drive or a USB stick expecting it to be
+ * self-contained, and it quietly keeps writing to C: anyway.
+ *
+ * electron-builder's portable target sets PORTABLE_EXECUTABLE_DIR to the folder
+ * the .exe was launched from, so when that's present everything is redirected
+ * to a folder beside it. MIMI_DATA_DIR (below, for the server's own data/) is
+ * derived from userData, so it follows automatically.
+ *
+ * Must run before the app is ready, hence its position up here.
+ *
+ * One honest caveat this cannot fix: the portable .exe is a self-extracting
+ * archive, so Windows unpacks it to %TEMP% on launch. Nothing is *kept* there,
+ * but if even that is unwanted, the .zip build extracts wherever you put it and
+ * never touches TEMP at all.
+ */
+const portableDir = process.env.PORTABLE_EXECUTABLE_DIR;
+if (portableDir) {
+  app.setPath("userData", path.join(portableDir, "MimiGamesData"));
+}
+
 const PORT = process.env.PORT || 1764;
 
 // Set by the extra Start Menu shortcuts (see electron/build/installer.nsh)

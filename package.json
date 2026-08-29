@@ -1,6 +1,6 @@
 {
   "name": "mini_games",
-  "version": "1.0.43",
+  "version": "1.0.45",
   "description": "51 Mimi Games \u2014 a hub of 80 mini-games, playable solo, split-screen, or over a wireless LAN room.",
   "main": "electron/main.js",
   "scripts": {
@@ -67,9 +67,13 @@
     "win": {
       "icon": "electron/build/icon.ico",
       "target": [
-        "nsis-web"
+        "portable",
+        "zip"
       ],
       "signExecutable": false
+    },
+    "portable": {
+      "artifactName": "51-mimi-games-windows.exe"
     },
     "nsis": {
       "oneClick": false,
