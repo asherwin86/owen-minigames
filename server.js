@@ -104,19 +104,45 @@ function resolvePrettyPath(urlPath) {
 }
 
 // --- Static file serving for the client-side app (HTML, JS, CSS, images, etc.) 
+/* Exactly what may be served, by first path segment. An allowlist, not a
+ * denylist, because a denylist only blocks what somebody remembered to write
+ * down — and the previous one didn't hold.
+ *
+ * What it used to be: a check for the literal prefix "/data/", applied to the
+ * raw URL *before* path.join normalised it. Verified against a running server:
+ * "/data/profiles.json" was correctly refused, but "//data/profiles.json" and
+ * "/./data/profiles.json" both returned 200 and the entire profiles file —
+ * names, emails, avatars, recovery-code hashes, and passwordHash for every
+ * account. The server compares a client-supplied passwordHash directly, so that
+ * file is not a hash leak, it is a working credential for every account. The
+ * same hole served /server.js (including DEV_SIGNUP_PASSWORD_HASH) and
+ * /certs/key.pem, and /server.js was confirmed readable on the deployed site.
+ *
+ * The fix is both halves together: resolve the path *first* so normalisation
+ * can't smuggle anything past the check, then require the result to be inside
+ * one of these roots. Adding a folder to the project no longer silently
+ * publishes it. */
+const SERVABLE = new Set(["css", "js", "games", "icons", "downloads", ".well-known"]);
+const SERVABLE_FILES = new Set(["index.html", "sw.js", "manifest.webmanifest", "favicon.ico", "robots.txt"]);
+
+function isServable(filePath) {
+  // Containment first: startsWith(ROOT) alone would accept a sibling directory
+  // that merely shares the prefix (…/mini_games_backup).
+  if (filePath !== ROOT && !filePath.startsWith(ROOT + path.sep)) return false;
+  const rel = path.relative(ROOT, filePath);
+  if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) return false;
+  const segments = rel.split(path.sep);
+  return segments.length === 1 ? SERVABLE_FILES.has(segments[0]) : SERVABLE.has(segments[0]);
+}
+
 function serveStatic(req, res) {
   const rawPath = decodeURIComponent(req.url.split("?")[0]);
   const urlPath = resolvePrettyPath(rawPath) || rawPath;
-  // /data holds profiles.json — never let it be served as a static file
-  if (urlPath === "/data" || urlPath.startsWith("/data/")) {
-    res.writeHead(403);
-    res.end("Forbidden");
-    return;
-  }
-  let filePath = path.join(ROOT, urlPath === "/" ? "/index.html" : urlPath);
-  if (!filePath.startsWith(ROOT)) {
-    res.writeHead(403);
-    res.end("Forbidden");
+  const filePath = path.resolve(ROOT, "." + (urlPath === "/" ? "/index.html" : urlPath));
+  if (!isServable(filePath)) {
+    // 404 rather than 403: a "forbidden" tells an attacker the path exists.
+    res.writeHead(404);
+    res.end("Not found");
     return;
   }
   fs.stat(filePath, (err, stat) => {

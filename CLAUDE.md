@@ -1,298 +1,204 @@
 # CLAUDE.md — 51 Mimi Games
 
-Project guide + standing code audit. Written 2026-08-29 against `main` @ `a01d7f0`
-plus the uncommitted working tree.
+Orientation for an agent working in this repo. Written 2026-08-31 against `main`.
+
+Read this before changing anything. It exists to stop you rediscovering the
+same five things, and to keep you from tripping the traps in section 4.
 
 ---
 
-## 1. What this is
+## 1. What this is, in one paragraph
 
 A single-origin games hub: one static front end (`index.html` + `js/` + `css/`)
-served by one dependency-light Node server (`server.js`), packaged three ways —
-web (Render), static preview (GitHub Pages), and desktop (Electron).
+served by one hand-rolled Node server (`server.js`), packaged for web, desktop,
+Android and Quest. **87 registered entries** — 84 games and 3 utility apps —
+each a file in `js/games/` that calls `MimiGames.register({...})`, plus **Kart
+Circuit** (`games/mario-kart/`), which is a standalone page rather than a
+hub-embedded game.
 
-- **85 mini-games** in `js/games/*.js`, all registered through `MimiGames.register({...})`
-  (`js/engine.js`). Every one is a `<script>` tag in `index.html`; there is no
-  bundler, no lazy loading, no build step for the web app.
-- **Kart Circuit** (`games/mario-kart/`) is the exception — a standalone Three.js
-  page (`game.js`, 10k lines) with its own menu, HUD, split-screen, and networking.
-- **Server** is hand-rolled `http`/`https` + `ws`, no framework. ~1900 lines.
-  APIs: `/api/profiles/*`, `/api/leaderboards/*`, `/api/friends/*`, `/api/cakes/*`,
-  `/api/fetch-page`. Real-time: one WebSocket path, `/mp`, carrying both room
-  multiplayer and friends presence.
+**There is no build step.** No bundler, no transpiler, no framework. What you
+write is what the browser runs. `node server.js`, open <http://localhost:1764>,
+reload to see a change. Do not introduce a build step to solve a problem that
+has another solution.
 
-### Deployment targets and how they differ
-| Target | Server | Notes |
+## 2. Where things are
+
+```
+index.html            every game's <script> tag; the only place they're listed
+server.js             the whole back end (~2000 lines): static files, APIs,
+                      WebSocket relay, page-fetch proxy
+sw.js                 service worker — offline cache
+css/style.css         base layout and components
+css/switch2.css       the Switch 2 home-menu skin, layered over style.css
+js/app.js             grid, filters, URL routing, opening/closing games
+js/engine.js          MimiGames.register + the ctx every game receives
+js/keys.js            the keys currency: daily quest, wallet, panel, leaderboard
+js/profiles.js        accounts, passkeys, local player roster (~74 KB)
+js/switch-shell.js    moves top-bar buttons into the bottom dock; clock/battery
+js/hub-backdrop.js    the 3D block backdrop behind the hub
+js/update-center.js   the CHANGELOG array the "What's New" panel reads
+js/games/*.js         one file per game
+games/mario-kart/     Kart Circuit: its own page, styles, and 10k-line game.js
+electron/main.js      desktop wrapper; spawns server.js as a child process
+```
+
+### The three heavyweight games
+
+| | Engine | Notes |
 |---|---|---|
-| Render (`render.yaml`) | `node server.js`, free plan | ephemeral disk; Upstash Redis mirrors `profiles`/`leaderboards`/`cakes` when `UPSTASH_REDIS_REST_*` are set |
-| GitHub Pages (`.github/workflows/gh-pages.yml`) | none | `window.MIMI_STATIC_MODE` gates accounts / leaderboards / multiplayer / page viewer |
-| Electron (`electron/main.js`) | spawns `server.js` locally | `MIMI_DATA_DIR` points at writable app data; auto-update feed is GitHub Releases |
-| LAN / dev | `node server.js` | serves HTTPS if `certs/` exists, plus a plain-HTTP mirror on `PORT+1` |
+| **Kart Circuit** | Three.js | Standalone page. 14 tracks, cups, split-screen, online matchmaking, WebXR. `game.js` is ~10k lines. |
+| **Block Realm** | Three.js | Voxel sandbox. Chunked meshing with baked AO, seeded terrain, saves only player-modified blocks. |
+| **Rival Arena** | Three.js | Arena FPS. ADS, gamepad, touch, aim assist, crates that spend keys. |
 
-### Commands
+Block Realm and Rival Arena **load Three.js on demand** rather than from
+`index.html` — it's 670 KB the other 85 games don't need, and the hub already
+parses ~1.5 MB per load. They share the copy vendored at
+`games/mario-kart/three.min.js`. Follow that pattern for any new dependency.
+
+## 3. How to work here
+
 ```bash
-node server.js
+node server.js                    # http://localhost:1764
+npm run electron:start            # desktop app against your working tree
+node --check <file>               # there is no linter; this is your syntax check
 ```
-```bash
-npm run electron:build:linux
-```
-Wine is broken on this box, so Windows ships as `--win zip` (portable), not NSIS.
-`npm test` is a stub — **there are no tests anywhere in this repo.**
 
----
+**There is no test suite.** `npm test` is the npm placeholder. Changes are
+verified by running the app and driving it. If you have a browser automation
+tool, use it — most bugs in this repo are behavioural, not syntactic.
 
-## 2. Conventions worth knowing before editing
+### Adding a game
 
-- **Cache-busting is manual.** Every `<script>`/`<link>` in `index.html` and
-  `games/mario-kart/index.html` carries `?v=YYYYMMDDx`. Bump it when you change
-  the file, and bump `CACHE_NAME` in `sw.js` when you change `index.html` itself
-  (it has no query string of its own).
-- **Changelog is a code artifact.** User-visible changes get an entry in the
-  `CHANGELOG` array at the top of `js/update-center.js` (date, time, emoji,
-  title, prose `desc`). That file is now 112 KB and loads on every page view.
-- **Comments carry the reasoning.** The house style is long "why, and what we
-  tried" comments above non-obvious code. Match it; don't strip it.
+1. A file in `js/games/` calling `MimiGames.register({ id, title, emoji,
+   category, players, howTo, init(stage, ctx) })`. `init` returns a cleanup
+   function.
+2. A `<script>` tag in `index.html`.
+3. Bump `EXPECTED_GAMES` in `js/app.js` — it's a tripwire for a game file that
+   silently failed to load, and it warns on every page load if it's wrong.
+4. The landing tagline in `index.html` names the game count too.
+
+## 4. Traps — read this section
+
+These are the things that have actually gone wrong here.
+
+- **Cache-busting is manual.** Every `<script>`/`<link>` in `index.html` carries
+  `?v=YYYYMMDDx`. Bump it when you change that file. `index.html` itself has no
+  query string, so changing *it* means bumping `CACHE_NAME` in `sw.js`.
+- **`ctx.tone.chime(notes)` takes an array.** Calling it bare throws inside the
+  engine. Optional chaining (`ctx.tone?.chime?.()`) guards the function
+  existing, not its arguments — that mistake silently aborted a crate handler
+  mid-way and threw on every kill in Rival Arena.
+- **`style.css` sets `background: var(--accent2)` on `body::after`.** Overriding
+  only `background-image` in a skin leaves that colour behind. It covered the
+  entire viewport in solid cyan for one release.
+- **A vignette in the same element as a colour layer will flatten it.** Layer
+  order matters: darkening has to sit *above* what it darkens.
+- **`animation-fill-mode: both` owns `transform` after the animation ends**, so
+  a `:hover` transform on the same element never applies. `.game-tile` hit this.
+- **Pretty URLs are one path segment on purpose** (`/snake`, not `/play/snake`).
+  A page served from a deeper path resolves its relative URLs against that path,
+  so `/play/snake` requested every script from `/play/js/` and returned a blank
+  hub. `games/mario-kart/index.html` genuinely is in a subfolder and carries a
+  `<base>` for exactly this reason.
+- **The service worker is network-first for navigations, cache-first for
+  everything else.** Don't "simplify" that back to cache-first — versioned
+  assets can never go stale, but `index.html` can, and it made deploys
+  invisible until the page was loaded twice.
+- **Static serving is an allowlist** (`SERVABLE` / `SERVABLE_FILES` in
+  `server.js`). It replaced a denylist that was bypassable — see section 6.
+  Adding a top-level folder does not publish it, and shouldn't.
+
+## 5. Conventions
+
+- **Comments explain *why*, and what was tried.** The house style is a paragraph
+  above anything non-obvious. Several are the only record of a bug that took a
+  day to find. Match it; don't strip them.
+- **User-visible changes get a `CHANGELOG` entry** at the top of the array in
+  `js/update-center.js` — date, time, emoji, title, and prose that says what was
+  wrong and what changed. That file is ~116 KB and loads on every page view.
 - **Client/server validation lists are duplicated by hand** — `KART_COLOR_SWATCHES`,
-  `CAKE_BASE_IDS`, `CAKE_TOPPING_IDS` mirror client lists with no shared module.
-  Change both.
+  `CAKE_BASE_IDS`, `CAKE_TOPPING_IDS`. Change both.
 - **Never commit** `data/*.json` (real accounts), `certs/`, `android-signing/`,
-  `downloads/`, `dist-electron*/`. All are gitignored for good reasons.
-- **Passwords are hashed client-side** (`hashPassword` in `js/profiles.js`,
-  `SHA-256("mimiProfile:" + key + ":" + password)`) and the server stores and
-  compares that hash verbatim. See finding S1 — this makes the hash itself the
-  credential.
+  `downloads/`, `dist-electron*/`. All gitignored for good reasons.
 
----
+## 6. Deployment and packaging
 
-## 3. What's currently in the working tree (uncommitted)
+| Target | How | Notes |
+|---|---|---|
+| Render | `node server.js`, free plan | The hosted site. Deploys on push to `main`, live in ~45 s. |
+| GitHub Pages | static, no server | `window.MIMI_STATIC_MODE` gates accounts/leaderboards/multiplayer/page-viewer. |
+| Desktop | Electron spawns `server.js` | Windows is a **portable .exe**; see below. |
+| Android / TV / Quest | TWA wrappers | They wrap the hosted URL, so they get web changes with **no rebuild**. |
 
-~1200 inserted lines across 9 modified files, plus 4 untracked new files. None of
-it is committed or pushed.
+**Render's free disk is ephemeral** — it resets on every deploy and on wake from
+sleep. Profiles, leaderboards and cakes are mirrored to Upstash Redis when
+`UPSTASH_REDIS_REST_URL`/`_TOKEN` are set in the Render dashboard. That is
+working; verify before any deploy that would otherwise lose accounts.
 
-**Switch 2 home-menu reskin of the hub**
-- `css/switch2.css` (new, 518 lines) layered over `style.css`; game tiles become
-  coloured rounded-square icons keyed off a stable `--hue` (`js/app.js:181`).
-- `js/switch-shell.js` (new) re-parents the existing top-bar buttons into a new
-  bottom dock (moves live nodes, so all existing listeners survive), and drives
-  a clock + real `navigator.getBattery()` readout.
+**Windows cannot build an installer on this machine.** Wine here cannot launch
+any Windows program at all (`wine cmd /c ver` exits 1 silently), and
+`nsis-web` needs it to run the built installer once to generate its embedded
+uninstaller. `build.win.target` is therefore `["portable", "zip"]`, both of
+which build without Wine. Put `nsis-web` back the moment Wine works. The
+portable build redirects `userData` next to the .exe via
+`PORTABLE_EXECUTABLE_DIR` so it keeps its data off the C: drive.
 
-**Kart Circuit: MK8-style menu flow**
-- `games/mario-kart/menu-flow.js` (new) + `mk8-menu.css` (new): the one-tall-card
-  pre-race menu becomes one decision per screen with Back/Next, progress dots and
-  a summary; the flow is per-mode (`FLOWS`), and picking a cup drops the track step.
-- `games/mario-kart/index.html` restructured into `<section class="mk-step">`.
+`electron-builder` needs Node 18+ (`@noble/hashes` is ESM) — the system `node`
+may be older than that.
 
-**Kart Circuit: Play Online (public matchmaking)**
-- `server.js`: new `matchmake` WS message, a `roomMeta` map beside `rooms`,
-  region derived from the client's IANA time zone, a server-owned 25s countdown
-  broadcast as `matchStatus`, `matchGo` at zero, and host promotion on host exit.
-- `game.js`: lobby UI, `mpMatchmake()`, random track pick on `matchGo`.
+## 7. Security posture
 
-**Kart Circuit rendering/HUD** — daylight lighting rebuild, cumulus sky, MK-World
-HUD layout, starting-light countdown, and a full control list on the pause screen.
+**Fixed 2026-08-31 — static path traversal.** `serveStatic` checked for the
+literal prefix `/data/` on the raw URL *before* `path.join` normalised it.
+Verified against a running server: `/data/profiles.json` was refused, but
+`//data/profiles.json` and `/./data/profiles.json` both returned **200 and the
+full profiles file** — including `passwordHash` for every account, which the
+server compares verbatim, making it a working credential rather than a hash.
+The same hole served `/server.js` (including `DEV_SIGNUP_PASSWORD_HASH`) and
+`/certs/key.pem`, and `/server.js` was confirmed readable on the deployed site.
+Now an allowlist, checked after resolution.
 
-**Housekeeping** — version 1.0.39 → 1.0.41, `sw.js` cache v5 → v7, changelog entries.
+### Still open, in rough priority order
 
----
+- **The WebSocket relay is unauthenticated and unlimited.** `checkRateLimit`
+  only guards `/api/`. Over `/mp`: `presence-hello` validates a `passwordHash`
+  with no limiter (bypassing the strict 15/min budget), `host` can create
+  unbounded rooms, and `state`/`chat` are relayed unvalidated with no
+  `maxPayload`.
+- **A socket can join a second room without leaving the first.** `host`, `join`
+  and `matchmake` all reassign `joinedRoom` without removing the client from its
+  previous room, and `close` cleans only the current one — so the old room keeps
+  a phantom player forever and is never swept. Factor out a
+  `leaveCurrentRoom()`.
+- **The plain-HTTP mirror exposes everything**, not just the update feed:
+  `requestHandler` is mounted whole on `PORT+1` whenever TLS is on.
+- **Relayed HTML is injected into the hub's own origin** —
+  `js/play-together.js` does `gameStage.innerHTML = pt.html` on room data.
+  `<img onerror=…>` runs, with access to the `localStorage` holding the session.
+  Host-only should be enforced server-side.
+- **The dev gate is one shared unsalted SHA-256**, checked at signup only.
 
-## 4. Audit findings
+### Accepted, not bugs
 
-Severity: **S** = security, **B** = correctness bug, **O** = operational, **Q** = quality.
-Items marked *verified* were reproduced against a running instance.
+Keys and game progress live in `localStorage`. They buy cosmetics in
+single-player games; someone editing their own browser storage to give
+themselves skins is expected. `js/keys.js` says so, and `SECURITY.md` says so
+publicly.
 
-### S1 — `/data/` guard is bypassable; profiles, TLS key and server source are publicly readable (critical, verified)
-`server.js:58` blocks only the literal prefix `/data/`, but the path is joined at
-`server.js:63` **after** that check, so `path.join` normalisation lets anything
-equivalent through. Verified live against a local instance:
+## 8. Known weak spots
 
-| Request | Result |
-|---|---|
-| `/data/profiles.json` | 403 |
-| `/./data/profiles.json` | **200 — full profile JSON** |
-| `//data/profiles.json` | **200** |
-| `/games/../data/profiles.json` | **200** |
-| `/certs/key.pem` | **200 — private TLS key** |
-| `/server.js` | **200 — source, incl. `DEV_SIGNUP_PASSWORD_HASH`** |
-
-Because the server compares the client-supplied `passwordHash` directly
-(`server.js:597`, and every other authenticated action), leaking `profiles.json` is not a hash
-leak — it is **plaintext-equivalent credentials for every account**, plus emails,
-avatars, recovery-code hashes and passkey public keys. On Render the file is
-written by `saveProfilesToDisk` even when Upstash is enabled, so it exists in
-production. Also note `server.js:64`'s `filePath.startsWith(ROOT)` accepts any
-sibling directory sharing the prefix (`/../mini_games_x/secret` passes).
-
-*Fix:* resolve first, then check — `const fp = path.resolve(ROOT, "." + urlPath);
-if (fp !== ROOT && !fp.startsWith(ROOT + path.sep)) 403;` — and switch to an
-explicit allowlist of servable roots (`index.html`, `css/`, `js/`, `games/`,
-`icons/`, `downloads/`, `manifest.webmanifest`, `sw.js`) rather than a denylist.
-
-### S2 — WebSocket surface has no authentication, rate limiting or size limit (high)
-`checkRateLimit` only guards `/api/` (`server.js:1458`). Over `/mp`:
-- `presence-hello` (`server.js:1648`) validates a `passwordHash` with no limiter at
-  all — a complete bypass of `RATE_LIMIT_STRICT`'s 15/min credential-check budget.
-- `host` creates an unbounded number of rooms; nothing caps rooms per socket, per
-  IP, or globally, and the sweep at `server.js:1828` only removes *empty* rooms.
-- `state`/`chat` payloads are relayed to the room unvalidated and unbounded.
-
-*Fix:* per-connection token bucket, a `maxPayload` on the `WebSocketServer`, a
-cap on rooms per IP, and route `presence-hello` through the strict limiter.
-
-### S3 — the plain-HTTP mirror exposes the whole app, not just the update feed (medium)
-`server.js:1904` mounts the *full* `requestHandler` on `PORT+1` whenever TLS is
-enabled — so every API (including credential-bearing profile calls) and every
-static path is reachable unencrypted, despite the main listener being HTTPS. The
-comment describes it as the update feed only.
-
-*Fix:* wrap it in a handler that 404s anything outside `/downloads/updates/` and
-`/mp`, or bind it to loopback.
-
-### S4 — relayed HTML is injected into the hub's own origin (medium)
-`js/play-together.js:263` does `gameStage.innerHTML = pt.html` with HTML received
-over the room relay. `<script>` won't run via `innerHTML`, but `<img onerror=…>`
-will, in the hub's origin, with access to `localStorage` (where the session and
-`passwordHash` live). The server relays `state` messages without inspecting them,
-so any room member can send this — the host role is not enforced.
-
-*Fix:* enforce host-only for `kind:"html"` snapshots server-side, and sanitise or
-render into a sandboxed frame.
-
-### S5 — the dev gate is one shared secret, and its hash is public (medium)
-`DEV_SIGNUP_PASSWORD_HASH` (`server.js:194`) is a single unsalted SHA-256 with a
-fixed `"dev-gate"` key, checked at signup only. Combined with S1's `/server.js`
-disclosure it's offline-brute-forceable, and dev accounts can list all profiles
-and reset any password (`server.js:639-642`).
-
-*Fix:* move to an env var, and require the dev check per privileged action rather
-than only at account creation.
-
-### B1 — a socket can join a second room without leaving the first, leaking rooms forever (high, verified)
-`host`/`join`/`matchmake` all reassign `joinedRoom`/`roomCode` without removing
-the client from its previous room, and `ws.on("close")` (`server.js:1770`) cleans
-only the *current* one. Verified: one socket sent `host` then `matchmake` and got
-back two `joined` messages for rooms `BP7S` and `QCS4`; on disconnect only `QCS4`
-is cleaned. `BP7S` keeps a phantom player holding a dead socket, so `room.size`
-never reaches 0 and neither the close handler nor the 4-hour sweep ever frees it.
-Unauthenticated, trivially scriptable memory growth — plus ghost racers on the
-grid for anyone who was in that room.
-
-*Fix:* factor out a `leaveCurrentRoom()` and call it at the top of all three
-handlers.
-
-### B2 — matchmade races can deadlock at the starting line (high)
-The server only *signals* `matchGo` (`server.js:1824`) and simultaneously sets
-`open = false`, `countdown = null`; the host client is what actually calls
-`startRace()` (`game.js:9364`). So if the host's tab is backgrounded/throttled,
-crashes, or disconnects between `matchGo` and `raceStart`, the lobby is
-permanently stuck: no race starts, the countdown is disarmed and never re-arms,
-and the room is closed to new matchmaking. The promoted host (`hostPromoted`,
-`game.js:9427`) is never told a `matchGo` already fired, so host migration does
-not recover it either.
-
-*Fix:* have the server re-arm the countdown if no `raceStart` arrives within a
-few seconds of `matchGo`, and re-send `matchGo` to a newly promoted host.
-
-### B3 — `mk8-menu.css` hides every step; only `menu-flow.js` un-hides one (medium)
-`mk8-menu.css:377` is `.mk-step { display: none }`, and `.is-active` is set solely
-by `menu-flow.js`. That file's own header claims deleting it "would degrade to the
-old single scrolling card" — true only if the stylesheet goes with it. In practice
-any load failure or early throw in that IIFE leaves **a blank menu and an
-unstartable game**. The risk is real because several lookups near the end are
-unguarded (`backBtn`, `countEl`, `dotsEl` at `menu-flow.js:94-105`; `backBtn`/`nextBtn` at `menu-flow.js:212-213`)
-while the ones above them are null-checked.
-
-*Fix:* make the no-JS state the visible one (`.mk-step { display: block }` plus a
-`.js-flow` class on the stage that switches to one-at-a-time), and null-guard the
-remaining lookups.
-
-### B4 — matchmaking region and identity are client-asserted (low)
-`scope`, `region`, `name`, `color`, `avatar` all come straight off the wire
-(`server.js:1671`), and `profileKey` is stored without verifying the caller owns
-that profile — unlike `presence-hello`, which does check. A client can claim any
-region, and impersonate a profile key in room player lists.
-
-### O1 — the published downloads are three versions behind the code (high)
-`index.html:49-69` pins every Download App link to
-`releases/download/v1.0.38/…`, while `package.json` is at **1.0.41** and freshly
-built 1.0.41 artifacts (AppImage, win zip, mac zip — 2026-08-29 07:42) are sitting
-unreleased in `downloads/`. `downloads/updates/latest.yml` also still advertises
-1.0.38. Anyone downloading the app today gets 1.0.38, and auto-update has nothing
-newer to find unless a v1.0.41 GitHub release exists.
-
-*Fix:* cut the release, then update the six pinned URLs — or, better, point them
-at `/releases/latest/download/<asset>` so the links stop needing edits.
-
-### O2 — all of section 3's work is uncommitted, and four files of it are untracked (high)
-`css/switch2.css`, `js/switch-shell.js`, `games/mario-kart/menu-flow.js` and
-`mk8-menu.css` are new and unstaged, but the modified `index.html` and
-`games/mario-kart/index.html` already reference them. Committing the tracked
-changes without `git add`-ing the new files ships a site that references four
-404s. Electron builds read from disk, so local builds hide this; Render and
-GitHub Pages deploy from git and would not.
-
-### O3 — Electron `build.files` omits the PWA assets (low)
-`package.json`'s `files` list ships `index.html`, `css/`, `js/`, `games/`,
-`server.js`, `electron/main.js` — but not `sw.js`, `manifest.webmanifest`, or
-`icons/`. `index.html:381` registers the service worker unconditionally, so it
-404s in packaged builds (caught, but the offline cache never exists there).
-
-### O4 — persistence rewrites the entire dataset on every mutation (medium)
-`saveProfilesToDisk` (`server.js:160`) copies the whole file to `.bak`, then
-`writeFileSync`s the full JSON, then `SET`s the entire profiles blob to Upstash —
-on every single profile save, follow, unfollow and achievement unlock. With
-60 KB avatars embedded per profile this grows super-linearly, the write is not
-atomic (no tmp+rename), and concurrent requests race last-write-wins on Upstash.
-
-*Fix:* write to a temp file and `rename`, debounce saves, and store profiles as
-individual Redis keys rather than one blob.
-
-### Q1 — no tests, at all
-`npm test` is the npm stub. ~23k lines of client code and a 1900-line server with
-zero automated coverage; every finding above was found by reading and by manual
-probing. The highest-value first targets are `serveStatic` path handling, the
-room lifecycle, and the SSRF allowlist in `resolveSafeAddress`.
-
-### Q2 — every page load parses ~1.5 MB of JavaScript
-All 85 game scripts plus a 112 KB changelog (`js/update-center.js`) load eagerly
-on the hub. `sw.js` documents this as deliberate ("no per-game lazy loading"), and
-it's what makes the runtime-cache SW work — but it is the single biggest
-first-load cost, and it grows with every game added.
-
-### Q3 — static responses are `Cache-Control: no-store`
-`server.js:77` sets `no-store` on everything, which defeats the manual `?v=`
-cache-busting scheme entirely for non-SW clients — every asset is re-fetched on
-every load. The `?v=` params only matter to the service worker's cache keys.
-
----
-
-## 5. What is already done well
-
-Worth not regressing:
-- **SSRF defence in the page viewer** (`server.js:1157-1200`) is genuinely careful:
-  every resolved address is checked, link-local/metadata ranges included, the
-  validated address is pinned via a custom `lookup` so Node can't re-resolve
-  (DNS-rebinding closed), and every redirect hop is re-checked.
-- **Sandboxing of fetched pages**: `allow-scripts` without `allow-same-origin`,
-  with a documented cookie/storage shim for sites that throw on opaque origins.
-- **Chat rendering** in Kart Circuit (`game.js:9160`) and the whole of
-  `js/friends.js` build DOM with `textContent`, not `innerHTML`.
-- **`loadProfilesFromDisk` refuses to boot** on a parse failure rather than
-  silently starting empty — a scar from a real data-loss incident, and the right
-  call.
-- **Electron hardening**: `sandbox: true`, no `nodeIntegration`, external links
-  forced through `shell.openExternal`, and the cert-error bypass is scoped to the
-  local host:port.
-- **The Switch 2 / MK8 reskins move live DOM nodes instead of rebuilding them**,
-  so existing handlers keep working — and neither new stylesheet needs a single
-  `!important`.
-
----
-
-## 6. Suggested order of work
-
-1. S1 (`serveStatic`) — it is a live credential leak on the hosted site.
-2. B1 + B2 — the matchmaking feature being shipped is currently leak-prone and
-   can deadlock.
-3. O2, then O1 — commit the new files, then cut v1.0.41 and repoint the links.
-4. S2, S3, S4.
-5. Q1 — a first test file covering exactly the paths in S1 and B1.
+- **No tests at all.** ~37k lines of client code and a 2000-line server. The
+  highest-value first targets are `serveStatic`'s path handling (now that it has
+  an allowlist worth protecting) and the room lifecycle.
+- **Every page load parses ~1.5 MB of JavaScript** — all 87 game scripts plus a
+  110 KB changelog. `sw.js` documents this as deliberate, and it's what makes
+  the runtime cache work, but it grows with every game.
+- **`saveProfilesToDisk` rewrites the entire dataset on every mutation** — full
+  file copy to `.bak`, full `writeFileSync`, full Upstash `SET`, on every save,
+  follow, unfollow and achievement unlock. Not atomic (no tmp+rename), and
+  concurrent requests race last-write-wins.
+- **The two 3D games are unverified on real hardware from here.** The available
+  browser is software-rendered WebGL, where both crawl regardless of their own
+  cost. Profiling shows the frame body at ~17 ms with ~0% in game JavaScript, so
+  they should be fine on a GPU — but that is an inference, not an observation.
+  Ask the user how they actually perform.
