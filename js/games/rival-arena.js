@@ -1043,6 +1043,12 @@ MimiGames.register({
         raf = requestAnimationFrame(frame);
         const dt = Math.min((now - last) / 1000, 0.05);
         last = now;
+        // This game reads the gamepad itself during a match (see readGamepad),
+        // so the hub's pad cursor is suppressed while one is live and handed
+        // back in the lobby and pause screen, where you need it to press
+        // buttons with a controller. Set every frame rather than on transitions
+        // so it can't get stuck on if a match ends down an unusual path.
+        window.MimiPadCursor?.setSuppressed(running);
         if (!running) { renderer.render(scene, camera); return; }
 
         const padInput = readGamepad(dt);
@@ -1191,6 +1197,8 @@ MimiGames.register({
 
       teardown.push(() => {
         cancelAnimationFrame(raf);
+        // Leaving mid-match must not strand the hub without its cursor.
+        window.MimiPadCursor?.setSuppressed(false);
         if (document.pointerLockElement === canvas) document.exitPointerLock();
         tracers.forEach((t) => { t.line.geometry.dispose(); t.line.material.dispose(); });
         mapGroup.traverse((o) => { if (o.geometry) o.geometry.dispose(); });

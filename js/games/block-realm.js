@@ -1179,6 +1179,9 @@ MimiGames.register({
         raf = requestAnimationFrame(frame);
         const dt = Math.min((now - last) / 1000, 0.05);
         last = now;
+        // Same as Rival Arena: the pad cursor would otherwise float over the
+        // world while you're mining. Released in the world list and pause menu.
+        window.MimiPadCursor?.setSuppressed(running);
         if (!running) { renderer.render(scene, camera); return; }
 
         /* movement */
@@ -1274,6 +1277,7 @@ MimiGames.register({
 
       teardown.push(() => {
         cancelAnimationFrame(raf);
+        window.MimiPadCursor?.setSuppressed(false);
         if (world) persist();
         exitPointerLock();
         chunks.forEach((chunk) => {

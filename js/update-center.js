@@ -4,6 +4,12 @@
 
   const CHANGELOG = [
     {
+      date: "2026-09-01",
+      entries: [
+        { emoji: "\u{1F5B1}\uFE0F", time: "00:00", title: "Fixed: the controller pointer floated over Rival Arena and Block Realm", desc: "The hub has a pointer you can drive with a controller so a gamepad can work the menus. Both new 3D games read the controller directly once you're playing, so that pointer should step aside \u2014 but neither was telling it to, and it sat on top of the game drifting around and swallowing stick input. It now hides the moment a match or a world starts and comes straight back in the lobby, the pause menu, and when you leave, so you can still press buttons with a controller everywhere it makes sense. Gun Game Arena already did this; the two new games simply weren't calling the same thing." },
+      ],
+    },
+    {
       date: "2026-08-31",
       entries: [
         { emoji: "\u{1F512}", time: "00:06", title: "Fixed: a way to read the accounts file straight off the server", desc: "The server refused to serve /data/profiles.json \u2014 but it checked the address for that exact spelling *before* tidying it up, so a slightly different spelling of the same path walked straight through and returned the whole file: every account's name, email, avatar, recovery codes and password hash. Because sign-in compares that hash directly, handing it out is the same as handing out the password. The same gap served the server's own source code and its private key, and the source was confirmed readable on the live site. It now works the other way round: the address is resolved first, and only a short list of folders that are meant to be public \u2014 the games, styles, scripts, icons and downloads \u2014 can be served at all, so adding a new folder to the project can never quietly publish it. Nothing about the site changes for you; everything that should load still loads." },
