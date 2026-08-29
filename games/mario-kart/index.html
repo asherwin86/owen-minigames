@@ -8,6 +8,13 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
     <title>Kart Circuit</title>
+    <!-- This page is reachable at a tidy alias (/kart-circuit, see PRETTY_ROUTES
+         in server.js) as well as at its real path. Relative URLs resolve against
+         whatever path the browser *thinks* it's on, so under the alias every
+         asset below would be looked for at the site root and 404. Pinning the
+         base here means one set of relative paths works from either URL — and
+         from inside the hub's iframe, which loads the real path. -->
+    <base href="/games/mario-kart/" />
     <script>
       // Loaded same-origin as the hub (iframe/navigation, not cross-origin),
       // so the same static-hosting check applies — see index.html.

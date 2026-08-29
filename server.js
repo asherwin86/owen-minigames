@@ -51,9 +51,62 @@ const MIME = {
   ".webmanifest": "application/manifest+json; charset=utf-8",
   ".zip": "application/zip",
 };
+/* Readable URLs.
+ *
+ * Three kinds of tidying:
+ *   - named pages     /kart-circuit  -> games/mario-kart/index.html
+ *   - a game link     /snake         -> index.html, opened on Snake
+ *   - a bare folder   /games         -> the hub's game shelf
+ *
+ * The game link is what makes a game shareable at all: the hub is a single
+ * page, so all 85 games used to sit at the same URL and "come play Snake" could
+ * only ever link to the front door. Serving index.html for /<id> and letting
+ * js/app.js read the path on load turns that into a real link.
+ *
+ * Deliberately ONE path segment, not /play/<id>. A page served at a deeper path
+ * than the file it came from resolves all its relative URLs against that deeper
+ * path — so under /play/snake every <script src="js/..."> in index.html is
+ * requested from /play/js/... and 404s. (Confirmed by loading it: the whole hub
+ * came back empty.) A single segment resolves against the root, which is where
+ * index.html actually lives, so nothing needs a <base> and nothing can drift
+ * out of sync with it later.
+ *
+ * Nothing here can reach a file the plain path couldn't: the named routes are
+ * an exact-match table, and the game link only ever resolves to index.html.
+ */
+const PRETTY_ROUTES = {
+  "/kart-circuit": "/games/mario-kart/index.html",
+  "/kart": "/games/mario-kart/index.html",
+  "/games/mario-kart": "/games/mario-kart/index.html",
+  "/home": "/index.html",
+  "/games": "/index.html",
+};
+
+/* Real top-level names, read once at boot, so a game id can never shadow an
+ * actual file or folder (/css, /js, /icons, /sw.js...). Derived from the
+ * directory rather than hard-coded, so adding a folder to the project can't
+ * quietly turn into a routing bug months later. The extras are paths the
+ * server itself owns that aren't files on disk. */
+const RESERVED_TOP_LEVEL = new Set([
+  ...fs.readdirSync(ROOT),
+  "api", "mp", "play", "data", "well-known",
+]);
+
+function resolvePrettyPath(urlPath) {
+  const trimmed = urlPath.length > 1 && urlPath.endsWith("/") ? urlPath.slice(0, -1) : urlPath;
+  const named = PRETTY_ROUTES[trimmed.toLowerCase()];
+  if (named) return named;
+  // /<game-id>: handled entirely client-side, so the server's only job is to
+  // hand back the hub instead of a 404 — a single-page app's history fallback.
+  const single = /^\/([a-z0-9][a-z0-9-]{0,39})$/i.exec(trimmed);
+  if (single && !RESERVED_TOP_LEVEL.has(single[1])) return "/index.html";
+  return null;
+}
+
 // --- Static file serving for the client-side app (HTML, JS, CSS, images, etc.) 
 function serveStatic(req, res) {
-  const urlPath = decodeURIComponent(req.url.split("?")[0]);
+  const rawPath = decodeURIComponent(req.url.split("?")[0]);
+  const urlPath = resolvePrettyPath(rawPath) || rawPath;
   // /data holds profiles.json — never let it be served as a static file
   if (urlPath === "/data" || urlPath.startsWith("/data/")) {
     res.writeHead(403);

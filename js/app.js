@@ -243,6 +243,7 @@
       console.error("Game failed to load:", def.id, err);
       gameStage.innerHTML = `<p style="color:var(--lose)">This game hit an error and couldn't load. (${err.message})</p>`;
     }
+    setRoute(`/${def.id}`);
     document.dispatchEvent(new CustomEvent("mimi:gameopen", { detail: def }));
   }
 
@@ -262,7 +263,44 @@
     browseControls.classList.remove("hidden");
     replayViewAnim(menuView);
     MimiHubAudio?.setInGame(false);
+    setRoute("/games");
     document.dispatchEvent(new CustomEvent("mimi:gameclose"));
+  }
+
+  /* Shareable per-game URLs.
+   *
+   * The hub is one page, so all 85 games used to sit at the same address and
+   * "come play Snake" could only ever be a link to the front door. Opening a
+   * game now puts /<id> in the address bar, and arriving on that URL opens that
+   * game directly — the server hands back index.html for any single-segment
+   * path that isn't a real file (see resolvePrettyPath in server.js), so a cold
+   * load or a refresh works too, not just in-app navigation.
+   *
+   * replaceState-vs-pushState matters here: pushState would mean every game you
+   * opened piled onto the history stack, so Back walked you through your whole
+   * browsing session one game at a time. One entry per view keeps Back meaning
+   * "leave the game", which is what the on-screen Back button does too.
+   *
+   * All of it is skipped on the static GitHub Pages preview, which has no
+   * server to serve index.html for a path that isn't a real file. */
+  const routingEnabled = !window.MIMI_STATIC_MODE && typeof history.replaceState === "function";
+
+  function setRoute(path) {
+    if (!routingEnabled || location.pathname === path) return;
+    try {
+      history.replaceState({ path }, "", path + location.search);
+    } catch (e) {
+      /* file:// in the packaged desktop app — the hub works the same without it */
+    }
+  }
+
+  // Returns the game a /play/<id> URL is asking for, if it names a real one.
+  function routedGame() {
+    if (!routingEnabled) return null;
+    const match = /^\/([a-z0-9][a-z0-9-]*)$/i.exec(location.pathname);
+    // gamesById is the authority — any other single-segment path (/games,
+    // /home, a typo) simply isn't a game and falls through to the front page.
+    return match ? gamesById.get(match[1].toLowerCase()) || null : null;
   }
 
   // Screen 0 (searchHomeView): a search-engine-style front page, shown
@@ -569,9 +607,14 @@
   // search-home/landing/browse screens entirely.
   const launchAppId = new URLSearchParams(location.search).get("app");
   const launchDef = launchAppId ? gamesById.get(launchAppId) : null;
-  if (launchDef) {
+  // A /play/<id> URL is the same intent as the desktop app's --app shortcut:
+  // skip the front page and open that game.
+  const deepLinked = routedGame();
+  if (launchDef || deepLinked) {
     showBrowse("All");
-    openGame(launchDef);
+    openGame(launchDef || deepLinked);
+  } else if (location.pathname === "/games" || location.pathname === "/games/") {
+    showBrowse("All");
   } else {
     showSearchHome();
   }

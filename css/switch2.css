@@ -44,26 +44,158 @@
   --sw-hairline: rgba(255, 255, 255, .09);
 }
 
+/* --------------------------------------------------------------- background
+   Four layers, none of which is a picture — so there's nothing to download,
+   nothing to cache, and it works offline and at any window size:
+
+     1. the base       a cool top-lit charcoal, with a vignette pulling the
+                       corners down so the shelf of icons sits in the light
+     2. a sheen        one very slow diagonal pass of brightness across it
+     3. a colour mesh  (body::before) four soft Joy-Con-coloured fields that
+                       drift against each other, plus one that follows the
+                       game you're hovering (js/switch-shell.js sets --sw-hue)
+     4. dust           (body::after) three tiled speck layers rising at
+                       different rates, which is what actually reads as depth
+
+   Layers 3 and 4 are pseudo-elements on <body> at negative z-index, so they
+   paint above body's own background but under every piece of UI, and the light
+   themes already switch both off (style.css) rather than needing new rules. */
 html, body {
   font-family: "Nunito Sans", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-  /* Flat, with only a whisper of vertical falloff — the console's own home
-     screen is deliberately plain so the game icons carry all the color. */
-  background: radial-gradient(120% 90% at 50% 0%, #1e1f24 0%, #16171a 55%, #101114 100%);
-  background-size: auto;
   animation: none;
 }
-/* The two floating glow blobs read as a phone wallpaper, not a console UI.
-   Kept, but pushed down to the very bottom corners at low opacity so they
-   land where the Joy-Con rails would be rather than washing over the shelf. */
-body::before, body::after {
-  width: 40vw; height: 40vw;
-  max-width: 460px; max-height: 460px;
-  filter: blur(130px);
-  opacity: .16;
-  animation: none;
+
+/* --------------------------------------------------------------- background
+   Four layers, stacked bottom to top. No image, so there's nothing to
+   download, it works offline, and it's sharp at any window size:
+
+     <html>          base charcoal, a top light, and one slow diagonal sheen
+     body::before    a drifting mesh of Joy-Con colour, plus a field that
+                     takes the hue of whatever game you're hovering
+     body::after     rising dust specks at three parallax rates, and — on top
+                     of everything — the vignette that keeps the colour in check
+     content         the UI
+
+   The vignette belongs in the *last* layer, not the first: underneath the mesh
+   it can't darken it, and the four overlapping colour fields turn the page into
+   a wash. Above it, the same mesh reads as atmosphere.
+
+   <body> is transparent so it doesn't cover what <html> paints; the light
+   themes set their own opaque body background at higher specificity
+   (html.theme-light body), so they still win. */
+body { background: transparent; }
+
+html {
+  background-color: #14151a;
+  background-image:
+    linear-gradient(115deg, transparent 36%, rgba(255,255,255,.05) 47%, transparent 58%),
+    radial-gradient(150% 105% at 50% -14%, rgba(255,255,255,.07), transparent 60%);
+  background-size: 260% 260%, auto;
+  background-position: 120% 0%, center;
+  background-attachment: fixed;
+  animation: sw-sheen 30s linear infinite;
 }
-body::before { background: var(--accent);  top: auto; bottom: -16vw; left: -10vw; }
-body::after  { background: var(--accent2); top: auto; bottom: -16vw; right: -10vw; }
+@keyframes sw-sheen {
+  to { background-position: -70% 0%, center; }
+}
+
+/* --sw-hue is the hue of the game icon under the cursor (js/switch-shell.js),
+   so the room takes on the colour of what you're about to play — the way the
+   console's home screen shifts behind a highlighted title. --sw-px/--sw-py are
+   the pointer parallax, applied through `translate` so they compose with the
+   drift animation's `transform` instead of fighting it for the same property. */
+body::before {
+  content: "";
+  position: fixed;
+  /* inset:0, not a negative inset: the gradient stops below are positioned in
+     percentages of this element, so oversizing it pushes "12% 16%" well off
+     screen and the four corner colours smear into one flat wash instead of
+     sitting in their corners. The drift comes from the scale in sw-mesh
+     instead, which overflows the viewport harmlessly — a fixed element adds no
+     scrollable overflow. */
+  inset: 0;
+  overflow: hidden;
+  width: auto; height: auto;
+  max-width: none; max-height: none;
+  border-radius: 0;
+  opacity: 1;
+  filter: none;
+  z-index: -3;
+  pointer-events: none;
+  background:
+    radial-gradient(40vw 40vw at 8% 6%, rgba(255, 60, 40, .26), transparent 62%),
+    radial-gradient(38vw 38vw at 94% 12%, rgba(0, 195, 227, .2), transparent 62%),
+    radial-gradient(40vw 40vw at 88% 98%, rgba(122, 92, 255, .22), transparent 62%),
+    radial-gradient(34vw 34vw at 6% 96%, rgba(126, 232, 28, .11), transparent 58%),
+    /* The hovered game's colour, and *only* when something is hovered: a
+       permanent field in the middle of the screen just tints the whole page,
+       and at the default hue it doubled up with the blue corner above. Its
+       alpha is its own variable so the resting state is genuinely nothing. */
+    radial-gradient(44vw 44vw at 50% 48%, hsl(var(--sw-hue, 190deg) 85% 55% / var(--sw-hue-a, 0)), transparent 64%);
+  translate: var(--sw-px, 0px) var(--sw-py, 0px);
+  transition: translate .5s cubic-bezier(.2, .8, .3, 1), background .55s ease;
+  animation: sw-mesh 38s ease-in-out infinite alternate;
+}
+@keyframes sw-mesh {
+  from { transform: scale(1) rotate(0deg); }
+  to   { transform: scale(1.16) rotate(5deg); }
+}
+
+/* The canvas of tumbling blocks (js/hub-backdrop.js) sits between the colour
+   mesh and the dust: the mesh is the light in the room, the blocks are in it,
+   and the dust drifts in front of them. */
+.hub-backdrop {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -2;
+  pointer-events: none;
+}
+html.theme-light .hub-backdrop { display: none; }
+
+/* Dust at three parallax rates — the drift between the three is what makes the
+   colour behind them read as having depth; one layer alone is just noise.
+   All background-position, so none of it ever touches layout.
+
+   No vignette here. It was originally a fourth layer in this same element, and
+   it flattened the whole mesh underneath into one uniform teal wash (checked by
+   sampling real pixels: with this element disabled the mesh renders correct
+   red/cyan/violet corners, with it enabled every corner came back the same
+   colour). The mesh is already restrained enough not to need darkening on top
+   of it, and one fewer full-screen layer is one fewer thing to composite. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  width: auto; height: auto;
+  max-width: none; max-height: none;
+  border-radius: 0;
+  filter: none;
+  opacity: 1;
+  z-index: -1;
+  pointer-events: none;
+  /* style.css fills this pseudo-element with `background: var(--accent2)` for
+     the old glow blob. Setting only `background-image` below leaves that
+     *colour* in place — and with the sizing above it stops being a small blob
+     and becomes a solid cyan sheet over the entire viewport, which is exactly
+     what it did until this line was added. The shorthand on ::before resets it
+     for free; this one has to say so. */
+  background-color: transparent;
+  background-image:
+    radial-gradient(circle, rgba(255,255,255,.42) 1.1px, transparent 1.7px),
+    radial-gradient(circle, rgba(210,230,255,.26) 1px, transparent 1.6px),
+    radial-gradient(circle, rgba(160,220,255,.28) 1.5px, transparent 2.2px);
+  background-size: 140px 140px, 215px 215px, 330px 330px;
+  background-position: 0 0, 40px 70px, 120px 30px;
+  translate: calc(var(--sw-px, 0px) * -1.6) calc(var(--sw-py, 0px) * -1.6);
+  transition: translate .5s cubic-bezier(.2, .8, .3, 1);
+  animation: sw-dust 90s linear infinite;
+}
+@keyframes sw-dust {
+  to { background-position: 0 -280px, 40px -360px, 120px -650px; }
+}
+}
 
 /* Room for the fixed dock so the last row of icons is never trapped under it. */
 body { padding-bottom: var(--sw-dock-h); }

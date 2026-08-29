@@ -68,6 +68,67 @@
     new MutationObserver(mirrorSearchMode).observe(topbar, { attributes: true, attributeFilter: ["class"] });
   }
 
+  /* --- background ------------------------------------------------------
+   * css/switch2.css draws the whole backdrop; these two are the only parts
+   * that need to know anything the stylesheet can't:
+   *
+   *   --sw-px/--sw-py  a few pixels of pointer parallax, so the colour mesh
+   *                    and the dust drift against each other as you move
+   *   --sw-hue         the hue of the game icon under the cursor, which the
+   *                    mesh picks up — the room takes on the colour of what
+   *                    you're about to play, the way the console's own home
+   *                    screen shifts behind a highlighted title
+   *
+   * Both are custom properties, so this never touches layout or the DOM: the
+   * compositor moves two already-painted layers. Skipped entirely for a coarse
+   * pointer (there is no hover to follow on a touchscreen) and for anyone who
+   * asked for reduced motion.
+   */
+  const wantsMotion = !window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+
+  if (wantsMotion) {
+    const root = document.documentElement;
+    let pending = false;
+    let px = 0;
+    let py = 0;
+
+    window.addEventListener("pointermove", (event) => {
+      // ±14px across the whole window — enough to feel like the backdrop has
+      // depth, small enough that it never reads as the page wobbling.
+      px = (event.clientX / window.innerWidth - 0.5) * 28;
+      py = (event.clientY / window.innerHeight - 0.5) * 28;
+      if (pending) return;
+      pending = true;
+      requestAnimationFrame(() => {
+        pending = false;
+        root.style.setProperty("--sw-px", `${px.toFixed(1)}px`);
+        root.style.setProperty("--sw-py", `${py.toFixed(1)}px`);
+      });
+    }, { passive: true });
+
+    // Delegated rather than bound per tile: the grid is rebuilt on every
+    // search keystroke and every category filter, and per-tile listeners would
+    // have to be re-attached each time (or leak).
+    document.addEventListener("pointerover", (event) => {
+      const tile = event.target.closest?.(".game-tile, .continue-tile, .landing-mode-btn");
+      if (!tile) return;
+      // .game-tile carries --hue (js/app.js) — its position in the full game
+      // list, the same number css/switch2.css turns into the icon's colour.
+      const hue = getComputedStyle(tile).getPropertyValue("--hue").trim();
+      if (!hue) return;
+      root.style.setProperty("--sw-hue", `${Number(hue) * 47}deg`);
+      // The tint field is invisible until something is hovered — see the
+      // --sw-hue-a note in css/switch2.css.
+      root.style.setProperty("--sw-hue-a", ".2");
+    }, { passive: true });
+
+    document.addEventListener("pointerout", (event) => {
+      if (event.relatedTarget?.closest?.(".game-tile, .continue-tile")) return;
+      root.style.removeProperty("--sw-hue-a");
+    }, { passive: true });
+  }
+
   const clockEl = document.getElementById("swClock");
   if (clockEl) {
     const tick = () => {
