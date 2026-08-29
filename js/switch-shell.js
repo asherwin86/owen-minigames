@@ -30,6 +30,7 @@
   const DOCK_BUTTONS = {
     musicBtn: "Music",
     settingsBtn: "Settings",
+    keysBtn: "Keys",
     updatesBtn: "What's New",
     playTogetherBtn: "Play Together",
     leaderboardsBtn: "Leaderboards",

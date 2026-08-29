@@ -1,6 +1,6 @@
 # 51 Mimi Games
 
-A hub of **82 mini-games and 3 small utility apps**, playable solo, in local
+A hub of **84 mini-games and 3 small utility apps**, playable solo, in local
 split-screen, or over the internet with friends — in a browser, as a desktop
 app, on Android and Android TV, or in a Quest headset.
 
@@ -34,7 +34,7 @@ desktop update feed on plain HTTP one port up.
 
 | | |
 |---|---|
-| **Action** | 24 — Snake, Breakout, Asteroids, Pinball, Flappy Wings, Zombie Highway, … |
+| **Action** | 26 — Snake, Breakout, Asteroids, Pinball, Flappy Wings, Zombie Highway, … |
 | **Sports** | 14 — Mini Golf, Bowling, Billiards, Archery, Ski Slalom, Skate Park, … |
 | **Puzzle** | 14 — 2048, Minesweeper, Sudoku, Match Three, Tower of Hanoi, … |
 | **Board** | 12 — Chess Duel, Checkers, Backgammon, Connect Four, Battleship, … |
@@ -63,6 +63,8 @@ not a hub-embedded game.
   controller can drive the hub's menus, not just the games.
 - **Installable** — it's a PWA with a service worker, so it works offline after
   one visit, and it ships as real desktop and mobile apps.
+- **Keys** — play 5 different games in a day and you earn 10 keys, spendable on
+  crates in Rival Arena. The whole feature lives in `js/keys.js`.
 
 ## Downloads
 
@@ -85,7 +87,7 @@ css/
 js/
   app.js              grid, filters, routing, opening and closing games
   engine.js           the tiny API every game registers against
-  games/*.js          one file per game, 85 of them
+  games/*.js          one file per game, 87 of them
   profiles.js         accounts, passkeys, local player roster
   play-together.js    screen-sharing multiplayer
 games/mario-kart/     Kart Circuit — its own page, styles and 10k-line game.js

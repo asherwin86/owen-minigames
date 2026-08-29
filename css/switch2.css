@@ -479,6 +479,13 @@ body { padding-bottom: var(--sw-dock-h); }
   line-height: 1;
   content: "•";
 }
+/* The keys button is the one dock icon that has to keep showing text — the
+   balance is the whole point of it — so it opts out of the glyph-only
+   treatment the others get and stays a pill. */
+#keysBtn { font-size: .82rem !important; width: auto !important; border-radius: 999px !important;
+           padding: 0 14px !important; font-weight: 800; letter-spacing: .3px; }
+#keysBtn::before { content: none !important; }
+
 #musicBtn::before      { content: "🎵"; }
 #settingsBtn::before   { content: "⚙️"; }
 #updatesBtn::before    { content: "🆕"; }
@@ -648,3 +655,37 @@ html.theme-light .btn:hover:not(:disabled), html.theme-light .btn.pad-hover-targ
 }
 .game-tile, .continue-tile { animation-name: sw-tile-in; }
 .continue-tile--last { animation-name: sw-tile-in, pulse-glow; }
+
+/* --------------------------------------------------------------------- keys */
+.keys-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--sw-dock-h) + 18px);
+  transform: translate(-50%, 16px);
+  z-index: 400;
+  padding: 12px 20px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #ffd166, #ffb02e);
+  color: #241a02;
+  font-weight: 800;
+  box-shadow: 0 12px 30px rgba(0,0,0,.5);
+  opacity: 0;
+  transition: opacity .3s ease, transform .3s cubic-bezier(.2,.9,.3,1.2);
+  pointer-events: none;
+}
+.keys-toast.is-in { opacity: 1; transform: translate(-50%, 0); }
+.keys-balance { font-size: 2.4rem; font-weight: 900; margin-bottom: 14px; }
+.keys-balance span { color: #ffd166; }
+.keys-quest {
+  border: 1px solid var(--sw-hairline);
+  border-radius: 16px;
+  padding: 14px 16px;
+  background: rgba(255,255,255,.04);
+}
+.keys-quest-title { margin: 0 0 2px; font-weight: 800; }
+.keys-quest-sub { margin: 0 0 10px; font-size: .84rem; color: var(--text-dim); }
+.keys-bar { height: 9px; border-radius: 999px; background: rgba(255,255,255,.12); overflow: hidden; }
+.keys-bar i { display: block; height: 100%; background: linear-gradient(90deg, #ffd166, #ffb02e); transition: width .3s ease; }
+.keys-quest-state { margin: 9px 0 0; font-size: .84rem; }
+.keys-note { margin: 14px 0 0; font-size: .84rem; color: var(--text-dim); }
+.keys-note-dim { opacity: .7; font-size: .78rem; }

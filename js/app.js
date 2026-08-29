@@ -622,8 +622,13 @@
   renderContinuePlaying();
   renderGrid();
 
+  // A tripwire for a game file that silently failed to load or register — the
+  // count only ever moves when a game is deliberately added, so a mismatch
+  // means something is missing rather than something is new. Bump it when you
+  // add one.
+  const EXPECTED_GAMES = 87;
   console.log(`Loaded ${games.length} mini-games.`);
-  if (games.length !== 80) {
-    console.warn(`Expected 80 games, found ${games.length}.`);
+  if (games.length !== EXPECTED_GAMES) {
+    console.warn(`Expected ${EXPECTED_GAMES} games, found ${games.length}.`);
   }
 })();
