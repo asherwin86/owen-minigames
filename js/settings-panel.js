@@ -274,6 +274,33 @@
     });
   }
   fpsSection.appendChild(gfxRow);
+
+  /* Frame-rate cap. Unlimited is the default and simply adds no cap of our
+   * own — the browser still ties drawing to your display's refresh, so that is
+   * the real ceiling. A cap earns its keep downward: holding a heavy game to 30
+   * keeps a laptop cool, and a steady 30 beats an unstable 45. */
+  const capLabel = document.createElement("p");
+  capLabel.innerHTML = "<strong>Frame rate limit</strong> \u2014 caps how often the 3D games redraw. Unlimited adds no cap, so your screen's refresh rate is the ceiling.";
+  capLabel.style.cssText = "margin:18px 0 8px;font-size:.86rem;color:var(--text-dim)";
+  fpsSection.appendChild(capLabel);
+  const capRow = document.createElement("div");
+  capRow.style.cssText = "display:flex;gap:8px;flex-wrap:wrap";
+  if (window.MimiGfx) {
+    window.MimiGfx.FPS_LIMITS.forEach((limit) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "btn" + (limit.id === window.MimiGfx.fpsLimitId() ? " primary" : "");
+      b.textContent = limit.label;
+      b.title = limit.desc;
+      b.addEventListener("click", () => {
+        window.MimiGfx.setFpsLimit(limit.id);
+        capRow.querySelectorAll(".btn").forEach((x) => x.classList.remove("primary"));
+        b.classList.add("primary");
+      });
+      capRow.appendChild(b);
+    });
+  }
+  fpsSection.appendChild(capRow);
   body?.appendChild(fpsSection);
 
   // Server address override — see js/engine.js's getServerBase/getServerWsBase

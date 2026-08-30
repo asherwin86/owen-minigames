@@ -8685,6 +8685,8 @@ function update(dt) {
     }
 }
 
+const kartFrameGate = window.MimiGfx ? window.MimiGfx.makeLimiter() : () => true;
+
 function loop(timestamp) {
     // Racing or not, a live headset still needs a live camera/HUD/wheel and
     // still needs its trigger polled for "start the race" — the flat DOM
@@ -8697,6 +8699,14 @@ function loop(timestamp) {
     // running, which is exactly the state it needed to handle).
     const presenting = Boolean(renderer3D?.xr?.isPresenting);
     if (!running && !presenting) return;
+    // Settings' frame-rate cap (js/graphics.js). Never applied in VR: a headset
+    // owns its own frame timing and dropping frames there is nauseating, not
+    // economical. lastTimestamp only advances on a drawn frame, so a skipped
+    // one folds its time into the next delta.
+    if (!presenting && !kartFrameGate(timestamp)) {
+      if (!renderer3D) requestAnimationFrame(loop);
+      return;
+    }
     const delta = Math.min((timestamp - lastTimestamp) / 1000, 0.033);
     lastTimestamp = timestamp;
     update(delta);

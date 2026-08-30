@@ -328,9 +328,14 @@
         </section>
     </main>
 
+    <!-- Hub-wide graphics settings (quality + frame cap). This page is
+         standalone, so it has to load it explicitly — without it window.MimiGfx
+         is undefined here and this game silently falls back to its old
+         hard-coded pixel ratio. -->
+    <script src="../../js/graphics.js?v=20260902b"></script>
     <script src="../../js/virtual-keyboard.js?v=20260815a"></script>
     <script src="three.min.js?v=20260815a-vendor"></script>
-    <script src="game.js?v=20260901a"></script>
+    <script src="game.js?v=20260902a"></script>
     <script src="menu-flow.js?v=20260828b"></script>
 </body>
 

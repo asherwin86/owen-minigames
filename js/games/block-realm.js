@@ -1178,8 +1178,13 @@ MimiGames.register({
       let last = performance.now();
       let saveTimer = 0;
 
+      // Settings' frame-rate cap. `last` is only advanced on a drawn frame, so
+      // a skipped one folds its time into the next delta rather than vanishing.
+      const frameGate = window.MimiGfx ? window.MimiGfx.makeLimiter() : () => true;
+
       function frame(now) {
         raf = requestAnimationFrame(frame);
+        if (!frameGate(now)) return;
         const dt = Math.min((now - last) / 1000, 0.05);
         last = now;
         // Same as Rival Arena: the pad cursor would otherwise float over the
