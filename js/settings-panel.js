@@ -207,6 +207,49 @@
   syncThemeUI();
   body?.appendChild(themeSection);
 
+  /* Frame-rate counter. Lives here rather than in a game because it's a
+   * hub-wide display preference — it shows on every screen, including this
+   * one. js/fps-meter.js owns the actual meter and the stored setting. */
+  const fpsSection = document.createElement("div");
+  fpsSection.style.cssText = "margin-top:18px";
+  const fpsLabel = document.createElement("p");
+  fpsLabel.innerHTML = "<strong>Frame rate</strong> \u2014 shows a live FPS counter in the corner, on every screen and inside games.";
+  fpsLabel.style.cssText = "margin:0 0 8px;font-size:.86rem;color:var(--text-dim)";
+  fpsSection.appendChild(fpsLabel);
+  const fpsBtn = document.createElement("button");
+  fpsBtn.type = "button";
+  fpsBtn.className = "btn";
+  const paintFps = () => {
+    const on = window.MimiFps ? window.MimiFps.isOn() : false;
+    fpsBtn.textContent = on ? "\u{1F4C8} FPS counter: On" : "\u{1F4C8} FPS counter: Off";
+  };
+  fpsBtn.addEventListener("click", () => {
+    if (!window.MimiFps) return;
+    window.MimiFps.setEnabled(!window.MimiFps.isOn());
+    paintFps();
+  });
+  paintFps();
+  fpsSection.appendChild(fpsBtn);
+
+  // The animated backdrop is the most expensive thing the hub draws, so it
+  // gets an explicit off-switch next to the counter that reveals the cost.
+  const bgBtn = document.createElement("button");
+  bgBtn.type = "button";
+  bgBtn.className = "btn";
+  bgBtn.style.marginLeft = "8px";
+  const paintBg = () => {
+    const on = window.MimiBackdrop ? window.MimiBackdrop.isOn() : true;
+    bgBtn.textContent = on ? "\u{1F9CA} Animated background: On" : "\u{1F9CA} Animated background: Off";
+  };
+  bgBtn.addEventListener("click", () => {
+    if (!window.MimiBackdrop) return;
+    window.MimiBackdrop.setEnabled(!window.MimiBackdrop.isOn());
+    paintBg();
+  });
+  paintBg();
+  fpsSection.appendChild(bgBtn);
+  body?.appendChild(fpsSection);
+
   // Server address override — see js/engine.js's getServerBase/getServerWsBase
   // for how this gets used. Exists so an installed app (Android, desktop)
   // doesn't need rebuilding every time the backend's address changes; type

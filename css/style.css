@@ -105,8 +105,8 @@ body::after { background: var(--accent2); bottom: -14vw; right: -12vw; animation
   gap: 12px;
   padding: 14px 22px;
   background: linear-gradient(135deg, rgba(28,29,33,.85), rgba(19,20,23,.85));
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  /* No backdrop blur: this bar is fixed over the animated backdrop, so the
+     blur would be recomputed every frame. css/switch2.css makes it opaque. */
   border-bottom: 1px solid var(--border);
   box-shadow: 0 12px 30px rgba(0,0,0,.35);
   position: sticky;

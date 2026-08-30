@@ -17,7 +17,7 @@
 // already-cached copy under its same URL. Bumping this forces every cached
 // entry (index.html included) to be dropped and re-fetched fresh on next
 // activation, same one-time reset any real cache-key change needs.
-const CACHE_NAME = "mimi-cache-v14";
+const CACHE_NAME = "mimi-cache-v15";
 
 // The one key every page load is cached under — see the navigate branch below.
 const SHELL_URL = new URL("index.html", self.registration.scope).href;

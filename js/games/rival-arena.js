@@ -90,8 +90,16 @@ MimiGames.register({
     wrap.className = "ra-wrap";
     wrap.innerHTML = `
       <style>
-        .ra-wrap { position: relative; width: 100%; height: min(72vh, 660px); border-radius: 14px;
+        /* Fills most of the window rather than sitting in a small box — an
+           arena shooter needs the screen. Drops the rounded corner in
+           fullscreen, where a floating card would look wrong. */
+        .ra-wrap { position: relative; width: 100%; height: min(86vh, 900px); border-radius: 14px;
                    overflow: hidden; background: #0b0e15; user-select: none; }
+        .ra-wrap:fullscreen { height: 100vh; border-radius: 0; }
+        .ra-full { position: absolute; left: 12px; top: 10px; z-index: 5; width: 38px; height: 38px;
+                   border-radius: 10px; border: 1px solid rgba(255,255,255,.22); background: rgba(10,14,24,.6);
+                   color: #fff; font-size: 1rem; cursor: pointer; }
+        .ra-full:hover { background: rgba(10,14,24,.9); border-color: #fff; }
         .ra-wrap canvas { display: block; width: 100%; height: 100%; }
         .ra-panel { position: absolute; inset: 0; display: flex; align-items: flex-start; justify-content: center;
                     overflow-y: auto; padding: 16px 0; z-index: 6;
@@ -117,6 +125,23 @@ MimiGames.register({
         .ra-crate-body { flex: 1; }
         .ra-crate-body strong { display: block; }
         .ra-crate-body span { font-size: .78rem; color: var(--text-dim); }
+        .ra-toggle { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px;
+                     border: 2px solid var(--border); background: rgba(255,255,255,.05); cursor: pointer;
+                     margin-bottom: 14px; }
+        .ra-toggle.is-on { border-color: #ffd166; background: rgba(255,209,102,.13); }
+        .ra-toggle .ra-sw { width: 40px; height: 22px; border-radius: 999px; background: rgba(255,255,255,.18);
+                            position: relative; flex: 0 0 auto; transition: background .15s; }
+        .ra-toggle .ra-sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px;
+                                   border-radius: 50%; background: #fff; transition: transform .15s; }
+        .ra-toggle.is-on .ra-sw { background: #ffd166; }
+        .ra-toggle.is-on .ra-sw::after { transform: translateX(18px); }
+        .ra-tg-desc { font-size: .76rem; color: var(--text-dim); }
+        .ra-mp { border: 2px solid var(--border); border-radius: 14px; padding: 12px 14px; margin-bottom: 15px; }
+        .ra-mp-row { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+        .ra-mp-row .btn { flex: 1; min-width: 110px; }
+        .ra-mp-row input { width: 90px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border);
+                           background: rgba(255,255,255,.06); color: var(--text); font: inherit; text-transform: uppercase; }
+        .ra-net-status { margin: 8px 0; font-size: .84rem; color: var(--text-dim); }
         .ra-skins { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 15px; }
         .ra-skin { width: 42px; height: 42px; border-radius: 10px; border: 2px solid transparent; cursor: pointer;
                    position: relative; padding: 0; }
@@ -212,7 +237,10 @@ MimiGames.register({
     loadThree().then((THREE) => {
       if (disposed) return;
       wrap.querySelector("#raLoad").remove();
-      start(THREE);
+      // Rethrow asynchronously so a bug in start() reaches window.onerror
+      // instead of being swallowed by this promise chain — which is exactly
+      // how a broken selector silently ate half the lobby.
+      try { start(THREE); } catch (err) { setTimeout(() => { throw err; }); throw err; }
     }).catch((err) => {
       const el = wrap.querySelector("#raLoad");
       if (el) el.textContent = `Couldn't load the 3D library — ${err.message}.`;
@@ -247,6 +275,7 @@ MimiGames.register({
         <div class="ra-left"><div class="ra-hplabel">100 HP</div><div class="ra-hpbar"><i style="width:100%"></i></div></div>
         <div class="ra-bottom"><div class="ra-ammo">30<small>/30</small></div><div class="ra-gunname">SMG</div></div>
         <div class="ra-scope"><i></i></div>
+        <button class="ra-full" type="button" title="Fullscreen" style="pointer-events:auto">\u26F6</button>
         <div class="ra-hint">Click to lock the mouse</div>`;
       wrap.appendChild(hud);
       const el = {
@@ -260,7 +289,24 @@ MimiGames.register({
         gunName: hud.querySelector(".ra-gunname"),
         hint: hud.querySelector(".ra-hint"),
         scope: hud.querySelector(".ra-scope"),
+        full: hud.querySelector(".ra-full"),
       };
+
+      /* Fullscreen. Requested on the wrapper rather than the canvas so the HUD,
+       * the lobby panel and the touch buttons come with it — fullscreening the
+       * canvas alone would leave you in a match with no crosshair or ammo. */
+      function toggleFullscreen() {
+        const el = wrap;
+        if (document.fullscreenElement === el) document.exitFullscreen?.();
+        else (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el);
+      }
+      el.full.addEventListener("click", (e) => { e.stopPropagation(); toggleFullscreen(); });
+      on(document, "fullscreenchange", () => {
+        el.full.textContent = document.fullscreenElement === wrap ? "\u2715" : "\u26F6";
+        // The renderer has no idea the element resized; without this the view
+        // stays letterboxed at the old aspect ratio.
+        resize();
+      });
 
       const panel = document.createElement("div");
       panel.className = "ra-panel";
@@ -409,7 +455,8 @@ MimiGames.register({
         const at = spawnPoint();
         const bot = {
           mesh, x: at.x, z: at.z, y: 0.85, hp: 100, alive: true,
-          cool: Math.random() * 2, target: spawnPoint(), respawn: 0,
+          cool: Math.random() * 2, respawn: 0,
+          foe: null, retarget: 0,   // free-for-all targeting, see the frame loop
           name: ["Volt", "Ash", "Rook", "Jinx", "Nova", "Kite", "Mako", "Pyra", "Zed", "Wisp"][index % 10],
         };
         bots.push(bot);
@@ -451,6 +498,16 @@ MimiGames.register({
        * be an aimbot. It flips the moment you use a different device, so
        * picking up a controller mid-match works without a setting. */
       let inputMode = "mouse";
+      // Auto-shoot: fires for you whenever an enemy is genuinely under the
+      // crosshair. Off by default on a mouse and on by default for touch, where
+      // holding a fire button while also dragging to aim is the awkward part.
+      // On by default for pad/touch (which is the point of it) but always
+      // overridable — some people would rather it stayed out of the way.
+      let aimAssistOn = ctx.storage.get("aimAssist", true);
+      let autoShoot = ctx.storage.get("autoShoot", null);
+      if (autoShoot === null) {
+        autoShoot = window.matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
+      }
 
       on(window, "keydown", (e) => {
         if (!running) return;
@@ -581,6 +638,15 @@ MimiGames.register({
 
           const wallDist = rayWorld(origin, dir, w.range);
           let best = null, bestT = wallDist;
+          let bestPeer = null;
+          peers.forEach((peer, id) => {
+            if (peer.hp <= 0) return;
+            const to = new THREE.Vector3(peer.x - origin.x, peer.y - 0.4 - origin.y, peer.z - origin.z);
+            const along = to.dot(dir);
+            if (along < 0 || along > bestT) return;
+            if (to.clone().sub(dir.clone().multiplyScalar(along)).length() > 0.6) return;
+            bestPeer = { id, peer }; best = null; bestT = along;
+          });
           bots.forEach((bot) => {
             if (!bot.alive) return;
             // Capsule approximated as a sphere at the body and a smaller one at
@@ -591,16 +657,43 @@ MimiGames.register({
               const along = to.dot(dir);
               if (along < 0 || along > bestT) return;
               const perp = to.clone().sub(dir.clone().multiplyScalar(along)).length();
-              if (perp <= part.r) { best = { bot, head: part.head }; bestT = along; }
+              if (perp <= part.r) { best = { bot, head: part.head }; bestPeer = null; bestT = along; }
             });
           });
 
           const end = origin.clone().add(dir.clone().multiplyScalar(Math.min(bestT, w.range)));
-          addTracer(new THREE.Vector3(P.x + 0.2, P.y - 0.2, P.z), end, best ? 0xffd166 : 0x8fb8ff);
+          addTracer(new THREE.Vector3(P.x + 0.2, P.y - 0.2, P.z), end, (best || bestPeer) ? 0xffd166 : 0x8fb8ff);
           if (best) hitBot(best.bot, Math.round(w.damage * (best.head ? 2.1 : 1)), best.head);
+          else if (bestPeer) {
+            // The shooter decides the hit and reports it. Without an
+            // authoritative server there is no better option, and for a casual
+            // arena it beats having no online play at all.
+            const dmg = Math.round(w.damage);
+            bestPeer.peer.hp = Math.max(0, bestPeer.peer.hp - dmg);
+            damageNumber(dmg, false);
+            el.hit.classList.add("on");
+            window.setTimeout(() => el.hit.classList.remove("on"), 90);
+            netSend({ type: "shot", target: bestPeer.id, damage: dmg, from: playerName() });
+            if (bestPeer.peer.hp <= 0) { P.kills += 1; feed(`You eliminated ${bestPeer.peer.name}`); syncHud(); }
+          }
         }
         if (P.ammo[P.weapon] === 0) startReload();
         syncHud();
+      }
+
+      /* A bot dying has to be handled two ways: killed by you, which scores and
+       * builds a streak, or killed by another bot, which is just something that
+       * happened in the arena. Same death, different bookkeeping. */
+      function killBot(bot) {
+        bot.alive = false;
+        bot.mesh.visible = false;
+        bot.respawn = 3;
+        bot.foe = null;
+      }
+
+      function botKilledBot(attacker, victim) {
+        killBot(victim);
+        feed(`${attacker.name} eliminated ${victim.name}`);
       }
 
       function hitBot(bot, amount, head) {
@@ -609,9 +702,7 @@ MimiGames.register({
         window.setTimeout(() => el.hit.classList.remove("on"), 90);
         damageNumber(amount, head);
         if (bot.hp <= 0) {
-          bot.alive = false;
-          bot.mesh.visible = false;
-          bot.respawn = 3;
+          killBot(bot);
           P.kills += 1;
           const now = performance.now();
           P.streak = now - P.lastKill < 5000 ? P.streak + 1 : 1;
@@ -780,6 +871,68 @@ MimiGames.register({
           teardown.push(stop);
         }
 
+        const assistLabel = document.createElement("p");
+        assistLabel.className = "ra-label";
+        assistLabel.textContent = "Aim help";
+        card.appendChild(assistLabel);
+
+        function toggleRow(on, title, desc, onFlip) {
+          const row = document.createElement("div");
+          row.className = "ra-toggle" + (on ? " is-on" : "");
+          // Addressed by class, not by a "span span span" descendant chain —
+          // that needed three levels of nesting, the markup has two, so it
+          // matched nothing and threw. showLobby() is called from inside a
+          // promise chain, so the throw was swallowed and the whole lower half
+          // of the lobby silently failed to render with no error anywhere.
+          row.innerHTML = `<span class="ra-sw"></span><span><strong class="ra-tg-title"></strong><br>
+            <span class="ra-tg-desc"></span></span>`;
+          row.querySelector(".ra-tg-title").textContent = title;
+          row.querySelector(".ra-tg-desc").textContent = desc;
+          row.onclick = () => { const next = !row.classList.contains("is-on"); row.classList.toggle("is-on", next); onFlip(next); };
+          card.appendChild(row);
+          return row;
+        }
+        toggleRow(autoShoot, "Auto-shoot", "Fires by itself when an enemy is under your crosshair",
+          (v) => { autoShoot = v; ctx.storage.set("autoShoot", v); });
+        toggleRow(aimAssistOn, "Aim assist", "Controller and touch only \u2014 slows and nudges your aim near a target",
+          (v) => { aimAssistOn = v; ctx.storage.set("aimAssist", v); });
+
+        /* ---- online / wireless ---- */
+        const mpLabel = document.createElement("p");
+        mpLabel.className = "ra-label";
+        mpLabel.textContent = "Play with others";
+        card.appendChild(mpLabel);
+        const mp = document.createElement("div");
+        mp.className = "ra-mp";
+        mp.innerHTML = `
+          <div class="ra-mp-row">
+            <button type="button" class="btn" data-mp="regional">\u{1F4CD} Regional</button>
+            <button type="button" class="btn" data-mp="global">\u{1F310} Global</button>
+          </div>
+          <div class="ra-mp-row">
+            <button type="button" class="btn" data-mp="host">\u{1F4E1} Host a room</button>
+            <input type="text" maxlength="4" placeholder="Code" aria-label="Room code" />
+            <button type="button" class="btn" data-mp="join">Join</button>
+          </div>
+          <p id="raNetStatus" class="ra-net-status">Play solo against bots, or connect with others.</p>
+          <button type="button" class="btn" data-mp="leave">Leave</button>`;
+        card.appendChild(mp);
+        const codeInput = mp.querySelector("input");
+        mp.querySelectorAll("button").forEach((b) => {
+          b.onclick = () => {
+            const act = b.dataset.mp;
+            if (act === "regional" || act === "global") netMatchmake(act);
+            if (act === "host") netHost();
+            if (act === "join") netJoin(codeInput.value.trim());
+            if (act === "leave") { netDisconnect(); setNetStatus("Left. Playing solo against bots."); }
+          };
+        });
+        if (net.room) {
+          setNetStatus(net.scope
+            ? `Connected \u2014 ${peers.size + 1} players.`
+            : `Room ${net.room} \u2014 ${peers.size + 1} connected.`);
+        }
+
         const skinLabel = document.createElement("p");
         skinLabel.className = "ra-label";
         skinLabel.textContent = "Skin for this weapon";
@@ -839,7 +992,13 @@ MimiGames.register({
         panel.style.display = "none";
         running = true;
         ctx.setStatus(`${mode.label} — first to ${mode.target}.`);
-        canvas.requestPointerLock();
+        // Guarded: an auto-start from the matchmaking countdown isn't a user
+        // gesture, and the browser rejects the request with an uncaught error.
+        // The click-to-lock hint stays up, which is the right fallback anyway.
+        try {
+          const p = canvas.requestPointerLock();
+          if (p && typeof p.catch === "function") p.catch(() => {});
+        } catch (e) { /* needs a click first — the hint says so */ }
       }
 
       function endMatch(won) {
@@ -922,7 +1081,7 @@ MimiGames.register({
       const ASSIST_CONE = 0.16;     // radians; roughly a thumb's width on screen
       function aimAssist(dt) {
         assistFriction = 1;
-        if (inputMode === "mouse") return;
+        if (!aimAssistOn || inputMode === "mouse") return;
         const origin = new THREE.Vector3(P.x, P.y, P.z);
         const aim = new THREE.Vector3(
           -Math.sin(P.yaw) * Math.cos(P.pitch), Math.sin(P.pitch), -Math.cos(P.yaw) * Math.cos(P.pitch),
@@ -953,6 +1112,32 @@ MimiGames.register({
         while (dYaw < -Math.PI) dYaw += Math.PI * 2;
         P.yaw += dYaw * Math.min(1, pull);
         P.pitch += (wantPitch - P.pitch) * Math.min(1, pull);
+      }
+
+      /* Fires when something is actually under the crosshair — a much tighter
+       * cone than aim assist uses, and it still respects the weapon's fire rate,
+       * ammo and reload because it goes through tryShoot() like any other shot.
+       * It will not shoot through walls. */
+      const AUTO_CONE = 0.045;
+      function autoShootTick() {
+        if (!autoShoot || P.reloading > 0 || P.ammo[P.weapon] <= 0) return;
+        const w = WEAPONS[P.weapon];
+        const origin = new THREE.Vector3(P.x, P.y, P.z);
+        const aim = new THREE.Vector3(
+          -Math.sin(P.yaw) * Math.cos(P.pitch), Math.sin(P.pitch), -Math.cos(P.yaw) * Math.cos(P.pitch),
+        );
+        for (let i = 0; i < bots.length; i += 1) {
+          const bot = bots[i];
+          if (!bot.alive) continue;
+          const to = new THREE.Vector3(bot.x - P.x, bot.y + 0.35 - P.y, bot.z - P.z);
+          const dist = to.length();
+          if (dist > w.range) continue;
+          to.normalize();
+          if (Math.acos(Math.max(-1, Math.min(1, to.dot(aim)))) > AUTO_CONE) continue;
+          if (rayWorld(origin, to, dist) < dist - 0.8) continue;
+          tryShoot();
+          return;
+        }
       }
 
       /* ----------------------------------------------------------- touch
@@ -1022,6 +1207,169 @@ MimiGames.register({
       // Only built on a device that actually has a touchscreen, so a desktop
       // player never gets a row of thumb buttons over their view.
       if (window.matchMedia("(pointer: coarse)").matches || "ontouchstart" in window) bindTouch();
+
+      /* --------------------------------------------------- online / wireless
+       * Built on the same relay server.js already runs for Kart Circuit and
+       * Play Together, so there is no new backend: `host`/`join` give you a
+       * 4-letter room code on your own network, and `matchmake` puts you in
+       * with strangers regionally or globally.
+       *
+       * The model is deliberately simple — every client simulates its own
+       * player and broadcasts its position; remote players are drawn but not
+       * simulated, and hits are decided by whoever fired. Authoritative
+       * simulation would mean a real game server, which this project does not
+       * have and does not need for a casual arena.
+       */
+      let net = { socket: null, id: null, room: null, host: false, scope: null };
+      const peers = new Map();   // id -> { name, x, y, z, yaw, hp, mesh, last }
+
+      function serverWsBase() {
+        try {
+          const base = (localStorage.getItem("mimiServerOverride") || "").trim().replace(/\/+$/, "");
+          if (base) return base.replace(/^http/, "ws");
+        } catch (e) { /* fall through to the page's own origin */ }
+        return `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}`;
+      }
+
+      function localRegion() {
+        try { return (Intl.DateTimeFormat().resolvedOptions().timeZone || "").split("/")[0] || "Global"; }
+        catch (e) { return "Global"; }
+      }
+
+      function playerName() {
+        try {
+          const ses = JSON.parse(localStorage.getItem("mimiActiveSession") || "null");
+          return (ses && ses.name) || "Player";
+        } catch (e) { return "Player"; }
+      }
+
+      function netConnect(onOpen) {
+        netDisconnect();
+        const socket = new WebSocket(`${serverWsBase()}/mp`);
+        net.socket = socket;
+        socket.addEventListener("open", () => onOpen(socket), { once: true });
+        socket.addEventListener("message", (ev) => {
+          let msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
+          netHandle(msg);
+        });
+        socket.addEventListener("close", () => {
+          net.socket = null; net.room = null; net.id = null;
+          peers.forEach((p) => scene.remove(p.mesh));
+          peers.clear();
+          setNetStatus("Disconnected.");
+        });
+        socket.addEventListener("error", () => setNetStatus("Couldn't reach the server."));
+      }
+
+      function netDisconnect() {
+        if (net.socket) { try { net.socket.close(); } catch (e) { /* already gone */ } }
+        net.socket = null; net.room = null; net.id = null; net.host = false; net.scope = null;
+        peers.forEach((p) => scene.remove(p.mesh));
+        peers.clear();
+      }
+
+      function netSend(obj) {
+        if (net.socket && net.socket.readyState === WebSocket.OPEN) net.socket.send(JSON.stringify(obj));
+      }
+
+      function setNetStatus(text) {
+        const elx = panel.querySelector("#raNetStatus");
+        if (elx) elx.textContent = text;
+      }
+
+      function peerMesh(name) {
+        const mat = new THREE.MeshLambertMaterial({ color: 0x4aa3ff });
+        const mesh = new THREE.Mesh(botGeo, mat);
+        const head = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.4, 0.44), mat);
+        head.position.y = 0.95;
+        mesh.add(head);
+        scene.add(mesh);
+        return mesh;
+      }
+
+      function netHandle(msg) {
+        if (msg.type === "joined") {
+          net.id = msg.id; net.room = msg.room; net.host = Boolean(msg.isHost);
+          (msg.players || []).forEach((pl) => {
+            if (pl.id === net.id) return;
+            peers.set(pl.id, { name: pl.name, x: 0, y: 1, z: 0, yaw: 0, hp: 100, mesh: peerMesh(pl.name) });
+          });
+          setNetStatus(net.scope
+            ? `Searching \u2014 ${peers.size + 1} in the lobby.`
+            : `Room ${net.room} \u2014 ${peers.size + 1} connected.${net.host ? " You're the host." : ""}`);
+        } else if (msg.type === "joinError") {
+          setNetStatus(msg.reason || "Couldn't join that room.");
+          netDisconnect();
+        } else if (msg.type === "playerJoined") {
+          peers.set(msg.id, { name: msg.name, x: 0, y: 1, z: 0, yaw: 0, hp: 100, mesh: peerMesh(msg.name) });
+          feed(`${msg.name} joined`);
+          setNetStatus(`${net.scope ? "Searching" : `Room ${net.room}`} \u2014 ${peers.size + 1} connected.`);
+        } else if (msg.type === "playerLeft") {
+          const p = peers.get(msg.id);
+          if (p) { scene.remove(p.mesh); peers.delete(msg.id); feed(`${p.name} left`); }
+          setNetStatus(`${net.scope ? "Searching" : `Room ${net.room}`} \u2014 ${peers.size + 1} connected.`);
+        } else if (msg.type === "state") {
+          const p = peers.get(msg.id);
+          if (p) { p.x = msg.x; p.y = msg.y; p.z = msg.z; p.yaw = msg.yaw; p.hp = msg.hp; }
+        } else if (msg.type === "shot") {
+          // Someone else's shot that landed on us. Damage is applied by the
+          // shooter's client and simply reported, which is the trade this
+          // makes for having no authoritative server.
+          if (msg.target === net.id) hurtPlayer(msg.damage, msg.from || "A rival");
+        } else if (msg.type === "matchStatus") {
+          setNetStatus(`${msg.scope === "regional" ? `Regional \u00b7 ${msg.region}` : "Global"} \u2014 `
+            + `${msg.players}/${msg.max} players${msg.startsIn ? ` \u00b7 starting in ${msg.startsIn}s` : ""}`);
+        } else if (msg.type === "matchGo" || msg.type === "raceStart") {
+          if (!running) startMatch();
+        } else if (msg.type === "hostPromoted") {
+          net.host = true;
+          feed("You're the host now.");
+        }
+      }
+
+      function netHost() {
+        netConnect((sock) => {
+          net.scope = null;
+          sock.send(JSON.stringify({ type: "host", name: playerName(), color: "#4aa3ff" }));
+        });
+        setNetStatus("Creating a room\u2026");
+      }
+      function netJoin(code) {
+        if (!code) { setNetStatus("Enter a room code."); return; }
+        netConnect((sock) => {
+          net.scope = null;
+          sock.send(JSON.stringify({ type: "join", room: code.toUpperCase(), name: playerName(), color: "#4aa3ff" }));
+        });
+        setNetStatus(`Joining ${code.toUpperCase()}\u2026`);
+      }
+      function netMatchmake(scope) {
+        netConnect((sock) => {
+          net.scope = scope;
+          sock.send(JSON.stringify({
+            type: "matchmake", scope, region: localRegion(), name: playerName(), color: "#4aa3ff",
+          }));
+        });
+        setNetStatus("Searching for players\u2026");
+      }
+
+      // Position broadcast, rate-limited: 15/s is plenty for bodies this size
+      // and keeps the relay from carrying a frame's worth of traffic per client.
+      let netClock = 0;
+      function netTick(dt) {
+        if (!net.room) return;
+        netClock += dt;
+        if (netClock < 1 / 15) return;
+        netClock = 0;
+        netSend({ type: "state", x: P.x, y: P.y, z: P.z, yaw: P.yaw, hp: P.hp });
+      }
+
+      function syncPeerMeshes() {
+        peers.forEach((p) => {
+          p.mesh.position.set(p.x, p.y - 0.75, p.z);
+          p.mesh.rotation.y = p.yaw;
+          p.mesh.visible = p.hp > 0;
+        });
+      }
 
       /* ---------------------------------------------------------------- loop */
       function resize() {
@@ -1113,6 +1461,7 @@ MimiGames.register({
 
         /* firing + reload */
         const w = WEAPONS[P.weapon];
+        autoShootTick();
         if (firing && w.auto) tryShoot();
         else if (firing && !w.auto && inputMode !== "mouse") tryShoot(); // pad/touch hold-to-fire respects the weapon's own rate limit
         if (P.reloading > 0) {
@@ -1122,21 +1471,57 @@ MimiGames.register({
         P.recoil *= Math.pow(0.02, dt);
         muzzle.intensity *= Math.pow(0.0005, dt);
 
-        /* bots */
+        /* bots — a free-for-all, not everyone ganging up on the player.
+         *
+         * Each bot picks the nearest enemy it can actually see, which may be
+         * another bot, and re-picks every couple of seconds or when its target
+         * dies. That alone changes the feel completely: fights break out across
+         * the map, you can round a corner onto two bots already shooting each
+         * other, and being the only target stops being the whole game. */
         bots.forEach((bot) => {
           if (!bot.alive) {
             bot.respawn -= dt;
             if (bot.respawn <= 0) {
               const at = spawnPoint();
               bot.x = at.x; bot.z = at.z; bot.hp = 100; bot.alive = true; bot.mesh.visible = true;
+              bot.retarget = 0;
             }
             return;
           }
-          const toX = P.x - bot.x, toZ = P.z - bot.z;
+
+          bot.retarget -= dt;
+          const targetGone = bot.foe && bot.foe !== "player" && !bot.foe.alive;
+          if (bot.retarget <= 0 || !bot.foe || targetGone) {
+            bot.retarget = 2 + Math.random() * 2.5;
+            const origin = new THREE.Vector3(bot.x, bot.y + 0.5, bot.z);
+            let bestFoe = null;
+            let bestScore = Infinity;
+            const consider = (pos, ref) => {
+              const d = Math.hypot(pos.x - bot.x, pos.z - bot.z);
+              if (d < 0.5) return;
+              const dir = new THREE.Vector3(pos.x - bot.x, pos.y - bot.y - 0.5, pos.z - bot.z).normalize();
+              // Something it can see is worth chasing; something it can't is a
+              // fallback so a bot never stands still with nothing to do.
+              const visible = rayWorld(origin, dir, d) >= d - 0.8;
+              const score = d + (visible ? 0 : 60);
+              if (score < bestScore) { bestScore = score; bestFoe = ref; }
+            };
+            if (P.hp > 0) consider({ x: P.x, y: P.y - 0.4, z: P.z }, "player");
+            bots.forEach((other) => {
+              if (other === bot || !other.alive) return;
+              consider({ x: other.x, y: other.y + 0.4, z: other.z }, other);
+            });
+            bot.foe = bestFoe;
+          }
+
+          const foe = bot.foe;
+          if (!foe) return;
+          const fx = foe === "player" ? P.x : foe.x;
+          const fy = foe === "player" ? P.y - 0.4 : foe.y + 0.4;
+          const fz = foe === "player" ? P.z : foe.z;
+
+          const toX = fx - bot.x, toZ = fz - bot.z;
           const dist = Math.hypot(toX, toZ) || 1;
-          // Close in until they're at a comfortable range, then strafe. A bot
-          // that walks straight at you is target practice; one that never
-          // approaches is a sniper duel. This does a bit of both.
           const want = dist > 16 ? 1 : dist < 7 ? -0.6 : 0;
           const strafe = Math.sin(now / 900 + bot.x) * 0.7;
           const bs = 3.6 * dt;
@@ -1145,18 +1530,24 @@ MimiGames.register({
           if (!hitsCollider(nx, bot.y, nz, 0.5)) { bot.x = nx; bot.z = nz; }
           bot.y = groundAt(bot.x, bot.z, bot.y) + 0.85;
           bot.mesh.position.set(bot.x, bot.y, bot.z);
-          bot.mesh.lookAt(P.x, bot.y, P.z);
+          bot.mesh.lookAt(fx, bot.y, fz);
 
           bot.cool -= dt;
           if (bot.cool <= 0) {
             bot.cool = 0.55 + Math.random() * 1.1;
             const origin = new THREE.Vector3(bot.x, bot.y + 0.5, bot.z);
-            const dir = new THREE.Vector3(P.x - bot.x, P.y - bot.y - 0.5, P.z - bot.z).normalize();
-            // Only shoot if nothing solid is in the way — otherwise bots snipe
-            // you through the middle of the map's biggest cover block.
+            const dir = new THREE.Vector3(fx - bot.x, fy - bot.y - 0.5, fz - bot.z).normalize();
+            // Only fire with a clear line, or bots snipe each other and you
+            // through the middle of the map's biggest cover block.
             if (rayWorld(origin, dir, dist) >= dist - 0.6 && Math.random() < mode.botSkill) {
-              addTracer(origin, new THREE.Vector3(P.x, P.y - 0.2, P.z), 0xff6b6b);
-              hurtPlayer(6 + Math.random() * 9, bot.name);
+              addTracer(origin, new THREE.Vector3(fx, fy, fz), foe === "player" ? 0xff6b6b : 0xffb35a);
+              const dmg = 6 + Math.random() * 9;
+              if (foe === "player") {
+                hurtPlayer(dmg, bot.name);
+              } else {
+                foe.hp -= dmg;
+                if (foe.hp <= 0) botKilledBot(bot, foe);
+              }
             }
           }
         });
@@ -1182,6 +1573,9 @@ MimiGames.register({
         );
         gunGroup.rotation.set(P.recoil * 1.1, P.reloading > 0 ? Math.sin(now / 90) * 0.35 : 0, 0);
 
+        netTick(dt);
+        syncPeerMeshes();
+
         renderer.render(scene, camera);
         // The viewmodel is drawn in its own pass with the depth buffer cleared,
         // which is how every shooter stops the gun in your hands clipping into
@@ -1197,6 +1591,7 @@ MimiGames.register({
 
       teardown.push(() => {
         cancelAnimationFrame(raf);
+        netDisconnect();
         // Leaving mid-match must not strand the hub without its cursor.
         window.MimiPadCursor?.setSuppressed(false);
         if (document.pointerLockElement === canvas) document.exitPointerLock();

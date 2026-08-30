@@ -40,7 +40,10 @@
   // of the screen behind the buttons, which reads as clutter rather than depth.
   const NEAR = 190;
   const FAR = 1600;
-  const COUNT = 28;
+  // Reduced from 28. Every block is 6 filled paths a frame, and at a high
+  // device pixel ratio that is a lot of large fills for something nobody is
+  // looking directly at — the hub was measurably janky because of it.
+  let count = 16;
 
   // A unit cube: 8 corners, and the 6 faces as corner indices wound so the
   // cross product of two edges points out of the cube (used for shading).
@@ -75,10 +78,12 @@
     return block;
   }
 
-  for (let i = 0; i < COUNT; i += 1) blocks.push(spawn({}, true));
+  for (let i = 0; i < count; i += 1) blocks.push(spawn({}, true));
 
   function resize() {
-    dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    // 1, not 1.5: these are soft untextured shapes, so the extra pixels buy
+    // nothing visible and cost 2.25x the fill area on a HiDPI screen.
+    dpr = 1;
     width = window.innerWidth;
     height = window.innerHeight;
     canvas.width = Math.round(width * dpr);
@@ -136,6 +141,11 @@
       const ny = uz * vx - ux * vz;
       const nz = ux * vy - uy * vx;
       const len = Math.hypot(nx, ny, nz) || 1;
+      // Back-face culling: roughly half of every cube's faces point away from
+      // the camera and are painted over by the front ones. Skipping them halves
+      // the fills per frame and changes nothing on screen.
+      const toCam = a[0] * nx + a[1] * ny + a[2] * nz;
+      if (toCam > 0) return;
       const light = (nx * -0.45 + ny * -0.6 + nz * -0.66) / len;
       const lightness = 26 + Math.max(0, light) * 34;
 
@@ -143,21 +153,44 @@
       ctx.moveTo(projected[indices[0]][0], projected[indices[0]][1]);
       for (let i = 1; i < indices.length; i += 1) ctx.lineTo(projected[indices[i]][0], projected[indices[i]][1]);
       ctx.closePath();
+      // Fill only. The edge stroke doubled the draw calls for an outline that
+      // is barely visible at these opacities.
       ctx.fillStyle = `hsla(${block.hue}, 72%, ${lightness}%, ${alpha})`;
       ctx.fill();
-      ctx.strokeStyle = `hsla(${block.hue}, 85%, 72%, ${alpha * 0.5})`;
-      ctx.lineWidth = 1;
-      ctx.stroke();
     });
   }
 
   let last = performance.now();
   let raf = 0;
+  let nextDraw = 0;
+  let slowFrames = 0;
 
   function frame(now) {
     raf = 0;
+    // 30fps is plenty for blocks drifting this slowly, and halves the work.
+    if (now < nextDraw) { schedule(); return; }
+    nextDraw = now + 33;
+
     const dt = Math.min((now - last) / 1000, 0.05);
     last = now;
+
+    /* Auto-degrade. On a machine where this is genuinely too expensive the
+     * right answer is to get out of the way, not to keep dropping the whole
+     * page's frame rate for decoration. Sustained long frames thin the field
+     * out, and then stop it altogether. */
+    if (dt > 0.06) {
+      slowFrames += 1;
+      if (slowFrames === 30 && count > 6) {
+        count = 6;
+        blocks.length = count;
+      } else if (slowFrames > 90) {
+        ctx.clearRect(0, 0, width, height);
+        canvas.style.display = "none";
+        return;   // no reschedule: it is done for this session
+      }
+    } else if (slowFrames > 0) {
+      slowFrames -= 1;
+    }
 
     ctx.clearRect(0, 0, width, height);
     // Back to front, so nearer blocks overlap further ones.
@@ -173,8 +206,25 @@
     schedule();
   }
 
+  /* An explicit off-switch in Settings, on top of the automatic degrade. The
+   * decoration is the single most expensive thing the hub draws, so anyone on
+   * modest hardware should be able to just turn it off rather than wait for it
+   * to notice. */
+  const OFF_KEY = "mimiBackdropOff";
+  function turnedOff() {
+    try { return localStorage.getItem(OFF_KEY) === "1"; } catch (e) { return false; }
+  }
+  window.MimiBackdrop = {
+    isOn: () => !turnedOff(),
+    setEnabled(on) {
+      try { localStorage.setItem(OFF_KEY, on ? "0" : "1"); } catch (e) { /* private mode */ }
+      canvas.style.display = on ? "" : "none";
+      if (on) { slowFrames = 0; restart(); } else if (raf) { cancelAnimationFrame(raf); raf = 0; }
+    },
+  };
+
   function shouldRun() {
-    if (document.hidden || reduceMotion.matches) return false;
+    if (turnedOff() || document.hidden || reduceMotion.matches) return false;
     // Nothing to look at behind an open game, and the games want the CPU.
     const gameView = document.getElementById("gameView");
     return !gameView || gameView.classList.contains("hidden");
@@ -201,6 +251,7 @@
     schedule();
   }
 
+  if (turnedOff()) canvas.style.display = "none";
   document.addEventListener("visibilitychange", restart);
   reduceMotion.addEventListener("change", restart);
   // openGame/showMenu in js/app.js toggle .hidden on #gameView; watching the
