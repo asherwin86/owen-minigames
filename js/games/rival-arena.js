@@ -251,7 +251,7 @@ MimiGames.register({
       const canvas = document.createElement("canvas");
       wrap.appendChild(canvas);
       const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+      renderer.setPixelRatio(window.MimiGfx ? window.MimiGfx.pixelRatio() : Math.min(window.devicePixelRatio || 1, 1.5));
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(0x121a2a);
       scene.fog = new THREE.Fog(0x121a2a, 40, 150);

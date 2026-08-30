@@ -36,7 +36,10 @@ MimiGames.register({
     const CHUNK = 16;          // blocks per chunk edge
     const HEIGHT = 48;         // world height in blocks
     const SEA_LEVEL = 20;
-    const VIEW_CHUNKS = 3;     // render radius, in chunks
+    // Render radius in chunks, from the hub's graphics setting (js/graphics.js)
+    // rather than hard-coded — this is the single biggest lever on how much
+    // work a frame is, so it belongs where the player can reach it.
+    const VIEW_CHUNKS = window.MimiGfx ? window.MimiGfx.viewDistance() : 3;
     const REACH = 6;           // how far you can break/place, in blocks
 
     // Block ids. 0 is air. `tiles` is [top, side, bottom] into the atlas.
@@ -478,7 +481,7 @@ MimiGames.register({
       const canvas = document.createElement("canvas");
       wrap.insertBefore(canvas, panel);
       const renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+      renderer.setPixelRatio(window.MimiGfx ? window.MimiGfx.pixelRatio() : Math.min(window.devicePixelRatio || 1, 1.5));
       const scene = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(72, 16 / 9, 0.1, 260);
       const chunkRoot = new THREE.Group();

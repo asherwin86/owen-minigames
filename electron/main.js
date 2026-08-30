@@ -4,6 +4,7 @@ const { spawn } = require("child_process");
 const http = require("http");
 const https = require("https");
 const path = require("path");
+const fs = require("fs");
 
 // Matches server.js's own PORT_IN_USE_EXIT_CODE — kept as a plain literal
 // here rather than shared/imported since the child runs as a wholly separate
@@ -11,17 +12,58 @@ const path = require("path");
 // cross-file dependency.
 const PORT_IN_USE_EXIT_CODE = 98;
 
-// This app is just a window hosting a local web page — no 3D graphics, no
-// GPU-accelerated canvas work happens in the shell itself (individual games'
-// own canvases render fine either way, that's ordinary 2D/WebGL content
-// Chromium software-renders when needed). Disabling hardware acceleration
-// up front avoids a real, repeatable GPU-process failure confirmed live on
-// this machine ("GPU state invalid after WaitForGetOffsetInRange" on every
-// single launch) — a Chromium/driver compatibility issue for this specific
-// Electron build, not anything the app itself does. Must be called before
-// the app is ready, which is why it's all the way up here rather than
-// inside the whenReady() handler below.
-app.disableHardwareAcceleration();
+/* Hardware acceleration — on.
+ *
+ * This was previously disabled unconditionally, on the strength of a GPU-process
+ * failure ("GPU state invalid after WaitForGetOffsetInRange") seen on the Linux
+ * box this project is developed on. Two things were wrong with that. The comment
+ * claimed the app does "no 3D graphics", which stopped being true the moment
+ * Kart Circuit, Block Realm and Rival Arena existed — all three are WebGL. And
+ * the failure was a dev-machine driver problem that was being shipped to every
+ * Windows and macOS user, where the GPU works fine.
+ *
+ * The cost of getting this wrong is not subtle: software-rendered WebGL is
+ * roughly two orders of magnitude slower than a GPU, which is exactly the
+ * "everything lags" symptom. Turning it on is the single largest performance
+ * change available to this app.
+ *
+ * Safety net below: if the GPU process really does fall over, the app restarts
+ * itself once in software mode and remembers, so a bad driver degrades instead
+ * of breaking. Set MIMI_SOFTWARE_RENDER=1 to force that from the start.
+ */
+const SOFTWARE_FLAG = "use-software-render";
+function softwareRenderRequested() {
+  if (process.env.MIMI_SOFTWARE_RENDER === "1") return true;
+  try {
+    return fs.existsSync(path.join(app.getPath("userData"), SOFTWARE_FLAG));
+  } catch (e) {
+    return false;
+  }
+}
+
+if (softwareRenderRequested()) {
+  app.disableHardwareAcceleration();
+} else {
+  // Chromium blocklists a lot of perfectly capable drivers, and a blocklisted
+  // GPU silently means software WebGL — the thing being fixed here.
+  app.commandLine.appendSwitch("ignore-gpu-blocklist");
+  app.commandLine.appendSwitch("enable-gpu-rasterization");
+  app.commandLine.appendSwitch("enable-zero-copy");
+}
+
+/* If the GPU process dies, fall back rather than limp along or crash: record
+ * the flag and relaunch once. The next start is software-rendered and stays
+ * that way until the file is deleted. */
+app.on("child-process-gone", (_event, details) => {
+  if (details.type !== "GPU" || softwareRenderRequested()) return;
+  try {
+    fs.writeFileSync(path.join(app.getPath("userData"), SOFTWARE_FLAG), String(Date.now()));
+  } catch (e) {
+    return; // can't record it, so don't loop on a relaunch that won't stick
+  }
+  app.relaunch();
+  app.exit(0);
+});
 
 /* Keep a portable build's data off the system drive.
  *

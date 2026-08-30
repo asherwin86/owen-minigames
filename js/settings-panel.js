@@ -248,6 +248,32 @@
   });
   paintBg();
   fpsSection.appendChild(bgBtn);
+
+  /* Graphics quality. Only affects the three 3D games (Kart Circuit, Block
+   * Realm, Rival Arena) — it sets their render resolution and draw distance.
+   * Everything else in the hub is 2D and doesn't care. */
+  const gfxLabel = document.createElement("p");
+  gfxLabel.innerHTML = "<strong>Graphics quality</strong> \u2014 render resolution and draw distance for the 3D games (Kart Circuit, Block Realm, Rival Arena). Reopen a game after changing it.";
+  gfxLabel.style.cssText = "margin:18px 0 8px;font-size:.86rem;color:var(--text-dim)";
+  fpsSection.appendChild(gfxLabel);
+  const gfxRow = document.createElement("div");
+  gfxRow.style.cssText = "display:flex;gap:8px;flex-wrap:wrap";
+  if (window.MimiGfx) {
+    Object.entries(window.MimiGfx.LEVELS).forEach(([key, meta]) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "btn" + (key === window.MimiGfx.level() ? " primary" : "");
+      b.textContent = meta.label;
+      b.title = meta.desc;
+      b.addEventListener("click", () => {
+        window.MimiGfx.setLevel(key);
+        gfxRow.querySelectorAll(".btn").forEach((x) => x.classList.remove("primary"));
+        b.classList.add("primary");
+      });
+      gfxRow.appendChild(b);
+    });
+  }
+  fpsSection.appendChild(gfxRow);
   body?.appendChild(fpsSection);
 
   // Server address override — see js/engine.js's getServerBase/getServerWsBase

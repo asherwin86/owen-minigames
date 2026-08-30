@@ -7499,7 +7499,9 @@ function initThree3D() {
         return;
     }
     renderer3D.setSize(WIDTH, HEIGHT, false);
-    renderer3D.setPixelRatio(1);
+    // Was pinned to 1 for the weakest machine; now follows the hub's graphics
+    // setting so a capable GPU renders at its real resolution.
+    renderer3D.setPixelRatio(window.MimiGfx ? window.MimiGfx.pixelRatio() : 1);
     scene3D = new THREE.Scene();
     sceneCamera3D = new THREE.PerspectiveCamera(60, WIDTH / HEIGHT, 4, 3600);
     mapGroup3D = new THREE.Group();

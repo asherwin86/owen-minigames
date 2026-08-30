@@ -4,6 +4,13 @@
 
   const CHANGELOG = [
     {
+      date: "2026-09-02",
+      entries: [
+        { emoji: "\u{1F680}", time: "00:01", title: "The desktop app was rendering everything without the graphics card", desc: "The Windows/Mac/Linux app had hardware acceleration switched off. That was added to work around a graphics driver fault on the machine this project is built on, back when the app was described in its own code as doing \u201cno 3D graphics\u201d \u2014 which stopped being true the moment Kart Circuit, Block Realm and Rival Arena existed. All three are 3D, and without the graphics card they were being drawn by the processor instead, which is on the order of a hundred times slower. That is almost certainly why things felt heavy in the app. It now uses the graphics card, and stops asking Chrome to skip cards it has arbitrarily blocklisted. If the graphics driver genuinely does fall over, the app restarts itself once without acceleration and remembers, so a bad driver means slow rather than broken." },
+        { emoji: "\u{1F39B}\uFE0F", time: "00:00", title: "Graphics quality setting", desc: "Balanced, High or Ultra, in Settings. It sets the render resolution and how far you can see in the three 3D games \u2014 the two things that actually move the frame rate. They each used to hard-code this for the weakest machine anyone might use, which left a good PC rendering at half the pixels it could and gave a slower laptop no way to turn anything down. Ultra doubles the resolution cap and pushes Block Realm\u2019s draw distance out; Balanced does the opposite. Reopen a game after changing it." },
+      ],
+    },
+    {
       date: "2026-09-01",
       entries: [
         { emoji: "\u{1F4E5}", time: "00:07", title: "Download App now gives you the current version", desc: "The download menu had been pointing at a release from several versions back, so anyone installing the app got a build without any of this. All six downloads now point at the latest release. Windows is a single .exe you just run \u2014 no install, and if you put it on a D: or E: drive or a USB stick it keeps everything it saves in a folder beside itself rather than on your C: drive. A .zip is on the release page too if you\u2019d rather extract a folder. The Android, TV and Quest apps wrap the website, so they update themselves and only need downloading for a first install." },
