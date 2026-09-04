@@ -705,6 +705,30 @@ html.theme-light .btn:hover:not(:disabled), html.theme-light .btn.pad-hover-targ
 .keys-dev-row input { flex: 1; min-width: 110px; padding: 8px 11px; border-radius: 10px;
                       border: 1px solid var(--border); background: rgba(255,255,255,.06); color: var(--text); font: inherit; }
 
+/* ------------------------------------------------------------- avatar picker
+   Shared by js/avatars.js; any game can call window.MimiAvatars.openPicker()
+   and gets this same grid, so a second game adopting it costs no new CSS. */
+.avatar-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 4px; }
+.avatar-opt {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 12px 6px; border-radius: 14px; border: 2px solid var(--sw-hairline);
+  background: rgba(255,255,255,.04); cursor: pointer; transition: transform .1s, border-color .15s, background .15s;
+}
+.avatar-opt:hover, .avatar-opt.pad-hover-target { border-color: var(--accent2); transform: translateY(-2px); }
+.avatar-opt.is-selected { border-color: #ffd166; background: rgba(255,209,102,.14); }
+.avatar-opt-emoji { font-size: 1.9rem; line-height: 1; }
+.avatar-opt-label { font-size: .72rem; color: var(--text-dim); }
+
+/* ------------------------------------------------------------ keyboard escape */
+.ke-choices { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; min-height: 54px; }
+.ke-choice {
+  width: 54px; height: 54px; border-radius: 14px; border: 2px solid #9aa0b4;
+  background: linear-gradient(160deg, #ffffff, #dfe3ee); color: #2b2f3a;
+  font-size: 1.3rem; font-weight: 800; cursor: pointer; transition: transform .1s, border-color .15s;
+}
+.ke-choice:hover, .ke-choice.pad-hover-target { border-color: #ffd166; transform: translateY(-2px) scale(1.04); }
+.ke-choice:active { transform: scale(0.95); }
+
 /* ----------------------------------------------------------------- FPS meter
    Above everything (including a game's own overlays and Kart Circuit's iframe)
    and click-through except for the click that resets its low-water mark. */

@@ -1,6 +1,6 @@
 # 51 Mimi Games
 
-A hub of **84 mini-games and 3 small utility apps**, playable solo, in local
+A hub of **85 mini-games and 3 small utility apps**, playable solo, in local
 split-screen, or over the internet with friends — in a browser, as a desktop
 app, on Android and Android TV, or in a Quest headset.
 
@@ -34,7 +34,7 @@ desktop update feed on plain HTTP one port up.
 
 | | |
 |---|---|
-| **Action** | 26 — Snake, Breakout, Asteroids, Pinball, Flappy Wings, Zombie Highway, … |
+| **Action** | 27 — Snake, Breakout, Asteroids, Pinball, Flappy Wings, Zombie Highway, … |
 | **Sports** | 14 — Mini Golf, Bowling, Billiards, Archery, Ski Slalom, Skate Park, … |
 | **Puzzle** | 14 — 2048, Minesweeper, Sudoku, Match Three, Tower of Hanoi, … |
 | **Board** | 12 — Chess Duel, Checkers, Backgammon, Connect Four, Battleship, … |

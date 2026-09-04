@@ -4,6 +4,12 @@
 
   const CHANGELOG = [
     {
+      date: "2026-09-04",
+      entries: [
+        { emoji: "\u{1F36C}", time: "00:00", title: "New game: Keyboard Escape", desc: "A candy-obby speed runner — a line of oversized keycap tiles stretches ahead, each stamped with a letter, and typing the right one before the ring around it empties hops you forward a little faster than last time. Get it wrong, or freeze up, and you slip back to the last checkpoint (a chocolate tile every five hops) a little slower than you were; three slips ends the run. No keyboard handy? Tap the matching candy button instead — it shows the real letter plus three decoys, so it's still a genuine pick, and a controller can click it with the hub's usual on-screen pad cursor. Comes with a small shared avatar picker (\u{1F36C}\u{1F36D}\u{1F9C1}\u{1F369}\u{1F36B} and a dozen more) so the runner on the tiles is whichever one you pick — built as its own module so other games can offer the same picker later without redoing the work." },
+      ],
+    },
+    {
       date: "2026-09-02",
       entries: [
         { emoji: "\u{1F3AC}", time: "00:02", title: "Frame rate limit in Settings \u2014 30, 60, 120 or unlimited", desc: "Caps how often the three 3D games redraw. Unlimited is the default and adds no cap of ours, which means your screen\u2019s refresh rate is the ceiling \u2014 worth being straight about, since drawing faster than your monitor can show just heats the machine up for frames nobody sees. A cap earns its keep in the other direction: holding a heavy game to 30 keeps a laptop cool and quiet, and a steady 30 feels better than an unstable 45. Never applied in VR, where the headset owns its own timing and dropped frames make people ill. One detail worth mentioning: the obvious way to write a limiter \u2014 \u2018has enough time passed since the last frame?\u2019 \u2014 can only ever produce whole divisions of your refresh rate, so asking for 60 on a 144 Hz screen actually gives you 48. This one carries the deadline forward instead and measures 61." },

@@ -11,7 +11,7 @@ same five things, and to keep you from tripping the traps in section 4.
 
 A single-origin games hub: one static front end (`index.html` + `js/` + `css/`)
 served by one hand-rolled Node server (`server.js`), packaged for web, desktop,
-Android and Quest. **87 registered entries** — 84 games and 3 utility apps —
+Android and Quest. **88 registered entries** — 85 games and 3 utility apps —
 each a file in `js/games/` that calls `MimiGames.register({...})`, plus **Kart
 Circuit** (`games/mario-kart/`), which is a standalone page rather than a
 hub-embedded game.
