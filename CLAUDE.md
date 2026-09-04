@@ -107,6 +107,11 @@ These are the things that have actually gone wrong here.
 - **Static serving is an allowlist** (`SERVABLE` / `SERVABLE_FILES` in
   `server.js`). It replaced a denylist that was bypassable — see section 6.
   Adding a top-level folder does not publish it, and shouldn't.
+- **`/sitemap.xml` isn't a file on disk.** `server.js` builds it at request time
+  from every `js/games/*.js`'s own `id: "..."` (the same source `EXPECTED_GAMES`
+  guards), so a new game is in it automatically. `robots.txt` *is* a real file
+  and just points at that route — don't go looking for a generator for it, and
+  don't try to hand-maintain the sitemap if this ever gets rewritten.
 
 ## 5. Conventions
 

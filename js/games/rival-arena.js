@@ -1114,10 +1114,12 @@ MimiGames.register({
         );
         let best = null;
         let bestAngle = ASSIST_CONE;
-        bots.forEach((bot) => {
-          if (!bot.alive) return;
-          const to = new THREE.Vector3(bot.x - P.x, bot.y + 0.35 - P.y, bot.z - P.z);
-          const dist = to.length();
+        // Considers real opponents too, not just bots — online play used to get
+        // no assist at all against another player, only against the AI, which
+        // is backwards: a human is exactly who a thumbstick most needs help
+        // tracking. Same cone/range/cover rules either way, so whichever kind
+        // of target is actually more centred on the crosshair wins.
+        function consider(to, dist) {
           if (dist > 70) return;
           to.normalize();
           const angle = Math.acos(Math.max(-1, Math.min(1, to.dot(aim))));
@@ -1125,6 +1127,16 @@ MimiGames.register({
           if (rayWorld(origin, to, dist) < dist - 0.8) return; // behind cover
           bestAngle = angle;
           best = { to, angle, dist };
+        }
+        bots.forEach((bot) => {
+          if (!bot.alive) return;
+          const to = new THREE.Vector3(bot.x - P.x, bot.y + 0.35 - P.y, bot.z - P.z);
+          consider(to, to.length());
+        });
+        peers.forEach((peer) => {
+          if (peer.hp <= 0) return;
+          const to = new THREE.Vector3(peer.x - P.x, peer.y - 0.4 - P.y, peer.z - P.z);
+          consider(to, to.length());
         });
         if (!best) return;
         // Closer to centre = more friction, so the crosshair settles rather
@@ -1147,7 +1159,7 @@ MimiGames.register({
        * (see inputMode), never for a mouse — a mouse player already aims and
        * clicks for themselves, so firing on their behalf isn't help, it's an
        * aimbot. Same exclusion aim assist already uses just above. */
-      const AUTO_CONE = 0.045;
+      const AUTO_CONE = 0.06;
       function autoShootTick() {
         if (!autoShoot || inputMode === "mouse" || P.reloading > 0 || P.ammo[P.weapon] <= 0) return;
         const w = WEAPONS[P.weapon];
@@ -1155,18 +1167,34 @@ MimiGames.register({
         const aim = new THREE.Vector3(
           -Math.sin(P.yaw) * Math.cos(P.pitch), Math.sin(P.pitch), -Math.cos(P.yaw) * Math.cos(P.pitch),
         );
-        for (let i = 0; i < bots.length; i += 1) {
-          const bot = bots[i];
-          if (!bot.alive) continue;
-          const to = new THREE.Vector3(bot.x - P.x, bot.y + 0.35 - P.y, bot.z - P.z);
-          const dist = to.length();
-          if (dist > w.range) continue;
+        // Picks whichever valid target is most centred on the crosshair rather
+        // than just the first one found — with more than one candidate near the
+        // cone's edge, that's the one a real shot would actually land on, and
+        // it's what makes this considered a real target rather than any target.
+        // Checks real opponents alongside bots, same as aim assist above —
+        // online play previously got no auto-fire against anyone but the AI.
+        let bestAngle = AUTO_CONE;
+        let found = false;
+        function consider(to, dist) {
+          if (dist > w.range) return;
           to.normalize();
-          if (Math.acos(Math.max(-1, Math.min(1, to.dot(aim)))) > AUTO_CONE) continue;
-          if (rayWorld(origin, to, dist) < dist - 0.8) continue;
-          tryShoot();
-          return;
+          const angle = Math.acos(Math.max(-1, Math.min(1, to.dot(aim))));
+          if (angle > bestAngle) return;
+          if (rayWorld(origin, to, dist) < dist - 0.8) return;
+          bestAngle = angle;
+          found = true;
         }
+        bots.forEach((bot) => {
+          if (!bot.alive) return;
+          const to = new THREE.Vector3(bot.x - P.x, bot.y + 0.35 - P.y, bot.z - P.z);
+          consider(to, to.length());
+        });
+        peers.forEach((peer) => {
+          if (peer.hp <= 0) return;
+          const to = new THREE.Vector3(peer.x - P.x, peer.y - 0.4 - P.y, peer.z - P.z);
+          consider(to, to.length());
+        });
+        if (found) tryShoot();
       }
 
       /* ----------------------------------------------------------- touch

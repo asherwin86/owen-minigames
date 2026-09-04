@@ -92,6 +92,37 @@ const RESERVED_TOP_LEVEL = new Set([
   "api", "mp", "play", "data", "well-known",
 ]);
 
+// Built once from js/games/*.js's own register({id: "..."}) calls, the same
+// source of truth EXPECTED_GAMES in js/app.js is a tripwire against — so a
+// new game is automatically discoverable the moment its file exists, with no
+// third place to remember to update (index.html's script tag and
+// EXPECTED_GAMES are already two). Cached after the first request rather than
+// rebuilt every time; nothing here changes while the process is running.
+let sitemapXmlCache = null;
+function gameIdsForSitemap() {
+  const dir = path.join(ROOT, "js", "games");
+  const ids = [];
+  fs.readdirSync(dir).forEach((file) => {
+    if (!file.endsWith(".js")) return;
+    const src = fs.readFileSync(path.join(dir, file), "utf8");
+    const match = /MimiGames\.register\(\s*\{\s*id:\s*"([a-z0-9-]+)"/.exec(src);
+    if (match) ids.push(match[1]);
+  });
+  return ids.sort();
+}
+function buildSitemapXml(origin) {
+  if (sitemapXmlCache && sitemapXmlCache.origin === origin) return sitemapXmlCache.xml;
+  const urls = [
+    { loc: `${origin}/`, priority: "1.0" },
+    { loc: `${origin}/kart-circuit`, priority: "0.8" },
+    ...gameIdsForSitemap().map((id) => ({ loc: `${origin}/${id}`, priority: "0.6" })),
+  ];
+  const body = urls.map((u) => `  <url><loc>${u.loc}</loc><priority>${u.priority}</priority></url>`).join("\n");
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${body}\n</urlset>\n`;
+  sitemapXmlCache = { origin, xml };
+  return xml;
+}
+
 function resolvePrettyPath(urlPath) {
   const trimmed = urlPath.length > 1 && urlPath.endsWith("/") ? urlPath.slice(0, -1) : urlPath;
   const named = PRETTY_ROUTES[trimmed.toLowerCase()];
@@ -1651,6 +1682,12 @@ function requestHandler(req, res) {
     handleFetchPageApi(req, res).catch(() => {
       sendJson(res, 500, { ok: false, msg: "Server error." });
     });
+    return;
+  }
+  if (urlPath === "/sitemap.xml") {
+    const origin = `${hasCert ? "https" : "http"}://${req.headers.host || "localhost"}`;
+    res.writeHead(200, { "Content-Type": "application/xml; charset=utf-8" });
+    res.end(buildSitemapXml(origin));
     return;
   }
   serveStatic(req, res);
