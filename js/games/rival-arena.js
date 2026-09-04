@@ -85,6 +85,27 @@ MimiGames.register({
       return SKINS.find((s) => s.id === skinId) || SKINS[0];
     }
 
+    /* Backs owned/equipped skins up to the signed-in account, same shape and
+     * same reason as js/keys.js's wallet sync: this storage is local-first
+     * (and, like the wallet, per-browser rather than per-profile — ctx.storage
+     * doesn't key by who's signed in), so without this a new device starts
+     * every crate back at zero even though the account already unlocked them.
+     * Fire-and-forget; a failed sync just leaves it local-only until the next
+     * one. The server's merge only ever grows the owned list, so it's safe to
+     * call after every local change without risking a downgrade. */
+    function syncSkinsToServer(onMerged) {
+      if (!window.MimiProfiles?.isSignedIn?.()) return;
+      window.MimiProfiles.syncRivalSkins(ownedSkins(), equipped()).then((res) => {
+        if (!res || !res.ok || !Array.isArray(res.owned)) return;
+        const localOwned = ownedSkins();
+        const merged = Array.from(new Set([...localOwned, ...res.owned]));
+        if (merged.length !== localOwned.length) {
+          ctx.storage.set(OWNED_KEY, merged);
+          if (onMerged) onMerged();
+        }
+      }).catch(() => { /* offline or server unreachable — try again next change */ });
+    }
+
     /* -------------------------------------------------------------- markup */
     const wrap = document.createElement("div");
     wrap.className = "ra-wrap";
@@ -840,7 +861,7 @@ MimiGames.register({
           const fresh = pool.filter((s) => !owned.includes(s.id));
           const won = (fresh.length ? fresh : pool)[Math.floor(Math.random() * (fresh.length ? fresh.length : pool.length))];
           const duplicate = owned.includes(won.id);
-          if (!duplicate) ctx.storage.set(OWNED_KEY, owned.concat(won.id));
+          if (!duplicate) { ctx.storage.set(OWNED_KEY, owned.concat(won.id)); syncSkinsToServer(); }
           const meta = RARITIES.find((r) => r.id === won.rarity);
           const reveal = document.createElement("div");
           reveal.className = "ra-reveal";
@@ -892,7 +913,7 @@ MimiGames.register({
           card.appendChild(row);
           return row;
         }
-        toggleRow(autoShoot, "Auto-shoot", "Fires by itself when an enemy is under your crosshair",
+        toggleRow(autoShoot, "Auto-shoot", "Controller and touch only — fires by itself when an enemy is under your crosshair",
           (v) => { autoShoot = v; ctx.storage.set("autoShoot", v); });
         toggleRow(aimAssistOn, "Aim assist", "Controller and touch only \u2014 slows and nudges your aim near a target",
           (v) => { aimAssistOn = v; ctx.storage.set("aimAssist", v); });
@@ -956,6 +977,7 @@ MimiGames.register({
                 const next = equipped();
                 next[WEAPONS[P.weapon].id] = s.id;
                 ctx.storage.set(EQUIP_KEY, next);
+                syncSkinsToServer();
                 buildGun();
                 renderSkins();
               };
@@ -964,6 +986,10 @@ MimiGames.register({
           });
         }
         renderSkins();
+        // Pulls down any skins unlocked from another device the moment the
+        // lobby opens, rather than waiting for the next crate/equip change —
+        // that's the whole point of a backup, showing up before you ask.
+        syncSkinsToServer(renderSkins);
 
         const actions = document.createElement("div");
         actions.className = "ra-actions";
@@ -1117,10 +1143,13 @@ MimiGames.register({
       /* Fires when something is actually under the crosshair — a much tighter
        * cone than aim assist uses, and it still respects the weapon's fire rate,
        * ammo and reload because it goes through tryShoot() like any other shot.
-       * It will not shoot through walls. */
+       * It will not shoot through walls. Only ever applies for pad and touch
+       * (see inputMode), never for a mouse — a mouse player already aims and
+       * clicks for themselves, so firing on their behalf isn't help, it's an
+       * aimbot. Same exclusion aim assist already uses just above. */
       const AUTO_CONE = 0.045;
       function autoShootTick() {
-        if (!autoShoot || P.reloading > 0 || P.ammo[P.weapon] <= 0) return;
+        if (!autoShoot || inputMode === "mouse" || P.reloading > 0 || P.ammo[P.weapon] <= 0) return;
         const w = WEAPONS[P.weapon];
         const origin = new THREE.Vector3(P.x, P.y, P.z);
         const aim = new THREE.Vector3(

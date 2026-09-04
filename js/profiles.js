@@ -1563,6 +1563,13 @@
       if (!session?.key || !session?.passwordHash) return Promise.resolve({ ok: false, msg: "Not signed in." });
       return apiCall("dev-set-keys", { key: session.key, passwordHash: session.passwordHash, balance }, "profiles");
     },
+    // Rival Arena's crate-unlocked weapon skins — same "thin network
+    // primitive" shape as syncKeys just above, for the cosmetics rather than
+    // the currency that buys them.
+    syncRivalSkins: (owned, equipped) => {
+      if (!session?.key || !session?.passwordHash) return Promise.resolve({ ok: false, msg: "Not signed in." });
+      return apiCall("sync-rival-skins", { key: session.key, passwordHash: session.passwordHash, owned, equipped }, "profiles");
+    },
     // Achievements — the catalog and client-attested rule evaluation live in
     // js/achievements.js; these are just the thin network primitives it
     // calls (mirrors how ctx.reportScore in js/engine.js doesn't duplicate

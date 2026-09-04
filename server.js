@@ -261,7 +261,7 @@ async function saveProfilesToDisk() {
 // bottom of this file. `let`, not `const`, since loading is async (may hit
 // Upstash over the network) but everything below closes over this same
 // binding and only ever runs after that load has finished.
-let profiles = {}; // { [key]: { name, passwordHash, dev, settings, updatedAt, createdAt, email, recoveryCodeHash, passkeys, avatar, kartColor, following, achievements, keys } }
+let profiles = {}; // { [key]: { name, passwordHash, dev, settings, updatedAt, createdAt, email, recoveryCodeHash, passkeys, avatar, kartColor, following, achievements, keys, rivalSkins } }
 // Signup used to trust body.dev outright — any client could POST
 // {dev: true} (not even through the UI checkbox, a bare API call was
 // enough) and get dev-only capabilities (the Admin panel, and now the
@@ -295,6 +295,7 @@ function backfillProfileDefaults() {
     if (!entry.achievements) entry.achievements = { unlocked: {} };
     if (entry.kartColor === undefined) entry.kartColor = null;
     if (typeof entry.keys !== "number") entry.keys = 0;
+    if (!entry.rivalSkins || !Array.isArray(entry.rivalSkins.owned)) entry.rivalSkins = { owned: ["standard"], equipped: {} };
   });
 }
 
@@ -306,6 +307,14 @@ const KART_COLOR_SWATCHES = [
   "#ffd166", "#53e0ff", "#ff6b6b", "#9bff8f", "#c792ff", "#5dd6ff", "#ff9f6e",
   "#63f0b1", "#ffd36f", "#8ec5ff", "#ff88ad", "#9cf77e", "#f4a7ff",
 ];
+
+// Kept in sync by hand with SKINS in js/games/rival-arena.js — validates
+// anything a "sync-rival-skins" call claims is owned/equipped, so a bogus
+// client payload can't wedge an unrecognized id into a saved profile.
+const RIVAL_SKIN_IDS = new Set([
+  "standard", "sand", "forest", "carbon", "arctic", "crimson", "ocean",
+  "toxic", "violet", "inferno", "gold", "prism",
+]);
 
 // --- Leaderboards: a separate top-level store, same load/save shape as
 // profiles.json (rotating .bak before every overwrite, refuse to boot on a
@@ -675,6 +684,7 @@ async function handleProfilesApi(req, res, action) {
       following: [],
       achievements: { unlocked: {} },
       keys: 0,
+      rivalSkins: { owned: ["standard"], equipped: {} },
     };
     saveProfilesToDisk();
     sendJson(res, 200, { ok: true });
@@ -683,7 +693,7 @@ async function handleProfilesApi(req, res, action) {
   if (action === "login") {
     if (!entry) { sendJson(res, 200, { ok: false, msg: "No profile with that name." }); return; }
     if (entry.passwordHash !== passwordHash) { sendJson(res, 200, { ok: false, msg: "Wrong password." }); return; }
-    sendJson(res, 200, { ok: true, name: entry.name, dev: entry.dev, settings: entry.settings, email: entry.email || null, passkeys: publicPasskeys(entry), avatar: entry.avatar || null, kartColor: entry.kartColor || null, keys: typeof entry.keys === "number" ? entry.keys : 0 });
+    sendJson(res, 200, { ok: true, name: entry.name, dev: entry.dev, settings: entry.settings, email: entry.email || null, passkeys: publicPasskeys(entry), avatar: entry.avatar || null, kartColor: entry.kartColor || null, keys: typeof entry.keys === "number" ? entry.keys : 0, rivalSkins: entry.rivalSkins || { owned: ["standard"], equipped: {} } });
     return;
   }
 
@@ -1010,6 +1020,32 @@ async function handleProfilesApi(req, res, action) {
     entry.updatedAt = Date.now();
     saveProfilesToDisk();
     sendJson(res, 200, { ok: true, balance: entry.keys });
+    return;
+  }
+
+  // --- Rival Arena weapon skins backup ---
+  // Same shape as sync-keys just above, for the crate-unlocked cosmetics:
+  // owned skins only ever grow (a union, never a removal — you can't lose
+  // something you unlocked by syncing from a device that doesn't have it
+  // yet), while which skin is equipped on which weapon is just a preference,
+  // so the newest write wins for that part. Every id is checked against
+  // RIVAL_SKIN_IDS so a malformed payload can't save something the game
+  // doesn't actually know how to render.
+  if (action === "sync-rival-skins") {
+    if (wrongPassword()) { sendJson(res, 200, { ok: false, msg: "Wrong password." }); return; }
+    const clientOwned = Array.isArray(body.owned) ? body.owned.filter((id) => typeof id === "string" && RIVAL_SKIN_IDS.has(id)) : [];
+    const clientEquipped = {};
+    if (body.equipped && typeof body.equipped === "object") {
+      Object.entries(body.equipped).forEach(([weaponId, skinId]) => {
+        if (isNonEmptyString(weaponId, 40) && typeof skinId === "string" && RIVAL_SKIN_IDS.has(skinId)) clientEquipped[weaponId] = skinId;
+      });
+    }
+    const current = entry.rivalSkins || { owned: ["standard"], equipped: {} };
+    const merged = Array.from(new Set([...current.owned, ...clientOwned, "standard"]));
+    const changed = merged.length !== current.owned.length || JSON.stringify(clientEquipped) !== JSON.stringify(current.equipped);
+    entry.rivalSkins = { owned: merged, equipped: clientEquipped };
+    if (changed) { entry.updatedAt = Date.now(); saveProfilesToDisk(); }
+    sendJson(res, 200, { ok: true, owned: merged, equipped: clientEquipped });
     return;
   }
 
