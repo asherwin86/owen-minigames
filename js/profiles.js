@@ -1551,6 +1551,18 @@
         return { ok: false, msg: "Couldn't reach the hub's server." };
       }
     },
+    // Keys backup — js/keys.js's wallet is localStorage-first by design; this
+    // is just the thin network primitive it calls to also back a balance up
+    // to (and restore it from) the signed-in account, the same shape as
+    // submitScore/publishCake above.
+    syncKeys: (balance) => {
+      if (!session?.key || !session?.passwordHash) return Promise.resolve({ ok: false, msg: "Not signed in." });
+      return apiCall("sync-keys", { key: session.key, passwordHash: session.passwordHash, balance }, "profiles");
+    },
+    devSetKeys: (balance) => {
+      if (!session?.key || !session?.passwordHash) return Promise.resolve({ ok: false, msg: "Not signed in." });
+      return apiCall("dev-set-keys", { key: session.key, passwordHash: session.passwordHash, balance }, "profiles");
+    },
     // Achievements — the catalog and client-attested rule evaluation live in
     // js/achievements.js; these are just the thin network primitives it
     // calls (mirrors how ctx.reportScore in js/engine.js doesn't duplicate

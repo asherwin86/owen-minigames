@@ -5,12 +5,18 @@
  * launches, because otherwise opening and closing the same game five times
  * would pay out, which rewards nothing anyone would call playing.
  *
- * Where the balance lives: localStorage, keyed by whoever is signed in, so two
- * people sharing a device don't share a wallet and signing out doesn't hand
- * your keys to a guest. It is deliberately NOT on the server — keys unlock
- * cosmetics in a single-player game, so the worst case for a determined cheat
- * is that they give themselves skins in their own browser. Putting it behind an
- * account would mean an API, a rate limiter and a migration, for that.
+ * Where the balance lives: localStorage first, keyed by whoever is signed in,
+ * so two people sharing a device don't share a wallet and signing out doesn't
+ * hand your keys to a guest. That's still the source of truth for every read
+ * and spend — games never wait on the network for it. When signed in, it's
+ * *also* backed up to the account (server.js's "sync-keys" profile action,
+ * mirroring how avatar/kartColor already follow you) so a new device picks up
+ * your real balance instead of starting at zero. The merge always takes
+ * whichever side is higher, so it only ever restores a balance, never erases
+ * one — the worst case for a determined cheat is still just giving themselves
+ * a bigger number in their own browser, same as before; the backup doesn't
+ * change that trust model, it just means losing your browser data no longer
+ * loses your keys too.
  *
  * Games use it through the tiny surface at the bottom (window.MimiKeys); the
  * hub uses the same one to draw the dock button.
@@ -21,6 +27,10 @@
   const STORE_PREFIX = "mimiKeys:";
   const DAILY_TARGET = 5;   // distinct games in a day…
   const DAILY_REWARD = 10;  // …pays this many keys
+  // Kept in sync by hand with MAX_KEYS_BALANCE in server.js — see that
+  // constant's comment for why. Clamped here too so a huge/bogus value never
+  // even reaches localStorage, let alone the network.
+  const MAX_BALANCE = 1000000;
 
   const listeners = new Set();
 
@@ -90,6 +100,29 @@
     listeners.forEach((fn) => {
       try { fn(state.balance); } catch (err) { /* one bad listener shouldn't stop the rest */ }
     });
+    syncToServer(state.balance);
+  }
+
+  /* Fire-and-forget backup to the signed-in account. Never awaited by a
+   * caller and never throws outward — a failed sync just means the balance
+   * stays local-only until the next successful one, same as any other
+   * best-effort background sync in this hub. Takes the merged (higher-of-
+   * both) balance the server hands back and folds it into localStorage too,
+   * so a device that's behind (e.g. just signed in fresh) catches up. */
+  function syncToServer(localBalance) {
+    if (!window.MimiProfiles?.isSignedIn?.()) return;
+    window.MimiProfiles.syncKeys(localBalance).then((res) => {
+      if (!res || !res.ok || typeof res.balance !== "number") return;
+      if (res.balance === localBalance) return;
+      const state = read();
+      if (state.balance === res.balance) return;
+      state.balance = res.balance;
+      try { localStorage.setItem(walletKey(), JSON.stringify(state)); } catch (e) { /* ignore */ }
+      publish(state.balance);
+      listeners.forEach((fn) => {
+        try { fn(state.balance); } catch (err) { /* one bad listener shouldn't stop the rest */ }
+      });
+    }).catch(() => { /* offline or server unreachable — try again next write */ });
   }
 
   /* The keys leaderboard rides on the hub's existing leaderboard system rather
@@ -157,16 +190,21 @@
     devSet(amount) {
       if (!isDev()) return false;
       const state = read();
-      const next = Math.max(0, Math.floor(amount));
+      const next = Math.min(MAX_BALANCE, Math.max(0, Math.floor(amount) || 0));
       if (next > state.balance) state.earned += next - state.balance;
       state.balance = next;
       write(state);
+      // devSet can lower a balance (the "Clear"/"Set" buttons), and the
+      // regular sync in write() only ever merges upward — so a deliberate
+      // decrease needs its own force-set call, or the next sync would just
+      // pull the old higher server value straight back down to overwrite it.
+      window.MimiProfiles?.devSetKeys?.(next).catch?.(() => {});
       return true;
     },
     isDev,
     add(amount) {
       const state = read();
-      state.balance += Math.max(0, Math.floor(amount));
+      state.balance = Math.min(MAX_BALANCE, state.balance + Math.max(0, Math.floor(amount)));
       state.earned += Math.max(0, Math.floor(amount));
       write(state);
       return state.balance;
@@ -326,8 +364,22 @@
     if (btn) btn.textContent = `🔑 ${read().balance}`;
   }
 
+  // Detects a sign-in (or a switch between accounts) and pulls the backed-up
+  // balance down right away, rather than waiting for the next local write to
+  // happen to trigger a sync. Polled alongside syncButton below rather than
+  // on its own event, since nothing in this hub currently fires one for
+  // "sign-in changed" — see profiles.js.
+  let lastSyncedWallet = null;
+  function checkSignIn() {
+    const wallet = walletKey();
+    if (wallet === lastSyncedWallet) return;
+    lastSyncedWallet = wallet;
+    if (window.MimiProfiles?.isSignedIn?.()) syncToServer(read().balance);
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
     const btn = document.getElementById("keysBtn");
+    checkSignIn();
     if (!btn) return;
     btn.addEventListener("click", openPanel);
     syncButton();
@@ -335,6 +387,6 @@
     // The wallet follows whoever is signed in, and profiles.js can change that
     // at any time from its own panel — so re-read rather than assuming the
     // balance only moves when this file moves it.
-    window.setInterval(syncButton, 4000);
+    window.setInterval(() => { syncButton(); checkSignIn(); }, 4000);
   });
 })();

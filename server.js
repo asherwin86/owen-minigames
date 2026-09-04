@@ -261,7 +261,7 @@ async function saveProfilesToDisk() {
 // bottom of this file. `let`, not `const`, since loading is async (may hit
 // Upstash over the network) but everything below closes over this same
 // binding and only ever runs after that load has finished.
-let profiles = {}; // { [key]: { name, passwordHash, dev, settings, updatedAt, createdAt, email, recoveryCodeHash, passkeys, avatar, kartColor, following, achievements } }
+let profiles = {}; // { [key]: { name, passwordHash, dev, settings, updatedAt, createdAt, email, recoveryCodeHash, passkeys, avatar, kartColor, following, achievements, keys } }
 // Signup used to trust body.dev outright — any client could POST
 // {dev: true} (not even through the UI checkbox, a bare API call was
 // enough) and get dev-only capabilities (the Admin panel, and now the
@@ -276,6 +276,13 @@ const DEV_SIGNUP_PASSWORD_HASH = "dd2a0d8da7d9cc17405586af3658ec7e3196ae67e93c19
 // image can't bloat data/profiles.json or the request itself.
 const MAX_AVATAR_LEN = 60000;
 
+// Keys are earned 10 at a time (js/keys.js's daily quest), so this is already
+// a couple of centuries of grinding — generous enough to never legitimately
+// bump into it, but a hard ceiling so a bad or bogus client value (a stray
+// Infinity from a broken JSON round-trip, say) can never wedge itself into a
+// saved profile and corrupt every future read of it.
+const MAX_KEYS_BALANCE = 1000000;
+
 // Any profile created before this field existed has no createdAt at all —
 // backfill from updatedAt (its oldest known timestamp) once, in memory, so
 // age-based achievements work without a separate migration script. Persists
@@ -287,6 +294,7 @@ function backfillProfileDefaults() {
     if (!entry.following) entry.following = [];
     if (!entry.achievements) entry.achievements = { unlocked: {} };
     if (entry.kartColor === undefined) entry.kartColor = null;
+    if (typeof entry.keys !== "number") entry.keys = 0;
   });
 }
 
@@ -666,6 +674,7 @@ async function handleProfilesApi(req, res, action) {
       kartColor: null,
       following: [],
       achievements: { unlocked: {} },
+      keys: 0,
     };
     saveProfilesToDisk();
     sendJson(res, 200, { ok: true });
@@ -674,7 +683,7 @@ async function handleProfilesApi(req, res, action) {
   if (action === "login") {
     if (!entry) { sendJson(res, 200, { ok: false, msg: "No profile with that name." }); return; }
     if (entry.passwordHash !== passwordHash) { sendJson(res, 200, { ok: false, msg: "Wrong password." }); return; }
-    sendJson(res, 200, { ok: true, name: entry.name, dev: entry.dev, settings: entry.settings, email: entry.email || null, passkeys: publicPasskeys(entry), avatar: entry.avatar || null, kartColor: entry.kartColor || null });
+    sendJson(res, 200, { ok: true, name: entry.name, dev: entry.dev, settings: entry.settings, email: entry.email || null, passkeys: publicPasskeys(entry), avatar: entry.avatar || null, kartColor: entry.kartColor || null, keys: typeof entry.keys === "number" ? entry.keys : 0 });
     return;
   }
 
@@ -962,6 +971,45 @@ async function handleProfilesApi(req, res, action) {
     });
     if (changed) saveProfilesToDisk();
     sendJson(res, 200, { ok: true, unlocked: entry.achievements.unlocked });
+    return;
+  }
+
+  // --- Keys backup ---
+  // js/keys.js's wallet is deliberately localStorage-first (see that file's
+  // header comment) — this exists only so it also follows you between
+  // devices, the same way avatar/kartColor already do. One round trip does
+  // both directions at once: send your local balance, take the higher of it
+  // and whatever's already saved (never silently move a balance backwards,
+  // e.g. a second device that hasn't caught up yet), save that, hand it
+  // back. A brand-new device sends 0 and gets its real balance back; a
+  // balance you've been spending down keeps whichever side is highest, which
+  // is the safe direction to err on for a cosmetics-only currency.
+  if (action === "sync-keys") {
+    if (wrongPassword()) { sendJson(res, 200, { ok: false, msg: "Wrong password." }); return; }
+    const clientBalance = Number.isFinite(body.balance) ? Math.max(0, Math.min(MAX_KEYS_BALANCE, Math.floor(body.balance))) : null;
+    if (clientBalance === null) { sendJson(res, 400, { ok: false, msg: "Invalid balance." }); return; }
+    const serverBalance = typeof entry.keys === "number" ? entry.keys : 0;
+    const merged = Math.max(serverBalance, clientBalance);
+    if (merged !== serverBalance) {
+      entry.keys = merged;
+      entry.updatedAt = Date.now();
+      saveProfilesToDisk();
+    }
+    sendJson(res, 200, { ok: true, balance: merged });
+    return;
+  }
+
+  // Dev-only direct set (js/keys.js's devSet), mirrored to the server so it
+  // sticks past the next sync-keys merge instead of losing to whatever
+  // higher balance the device already had saved.
+  if (action === "dev-set-keys") {
+    if (wrongPassword()) { sendJson(res, 200, { ok: false, msg: "Wrong password." }); return; }
+    if (!entry.dev) { sendJson(res, 200, { ok: false, msg: "Dev accounts only." }); return; }
+    const amount = Number.isFinite(body.balance) ? Math.max(0, Math.min(MAX_KEYS_BALANCE, Math.floor(body.balance))) : 0;
+    entry.keys = amount;
+    entry.updatedAt = Date.now();
+    saveProfilesToDisk();
+    sendJson(res, 200, { ok: true, balance: entry.keys });
     return;
   }
 
