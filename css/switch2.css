@@ -729,6 +729,54 @@ html.theme-light .btn:hover:not(:disabled), html.theme-light .btn.pad-hover-targ
 .ke-choice:hover, .ke-choice.pad-hover-target { border-color: #ffd166; transform: translateY(-2px) scale(1.04); }
 .ke-choice:active { transform: scale(0.95); }
 
+/* -------------------------------------------------------------- feedback */
+.feedback-cats { display: flex; gap: 8px; margin-bottom: 10px; }
+.feedback-message {
+  width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 10px;
+  border: 1px solid var(--border); background: rgba(255,255,255,.06); color: var(--text);
+  font: inherit; resize: vertical; margin-bottom: 10px;
+}
+.feedback-status { min-height: 1.2em; font-size: .84rem; color: var(--text-dim); }
+.feedback-inbox { margin-top: 14px; }
+.feedback-inbox-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; max-height: 320px; overflow-y: auto; }
+.feedback-row { border: 1px solid var(--sw-hairline); border-radius: 10px; padding: 10px 12px; background: rgba(255,255,255,.04); }
+.feedback-row-top { display: flex; gap: 8px; align-items: center; font-size: .78rem; color: var(--text-dim); margin-bottom: 4px; }
+.feedback-row-top strong { color: var(--text); flex: 1; }
+.feedback-row-msg { margin: 0; font-size: .9rem; white-space: pre-wrap; word-break: break-word; }
+
+/* ------------------------------------------------------------ video board */
+.vb-wrap { display: flex; flex-direction: column; gap: 14px; max-width: 880px; margin: 0 auto; }
+.vb-tabs { display: flex; gap: 8px; justify-content: center; }
+.vb-board, .vb-watch { display: flex; flex-direction: column; gap: 12px; }
+.vb-board-controls { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+.vb-filter { display: flex; gap: 6px; }
+.vb-post { display: flex; gap: 8px; flex-wrap: wrap; }
+.vb-post-url { flex: 2; min-width: 200px; }
+.vb-post-title { flex: 1; min-width: 140px; }
+.vb-post input, .vb-watch-row input {
+  padding: 9px 12px; border-radius: 10px; border: 1px solid var(--border);
+  background: rgba(255,255,255,.06); color: var(--text); font: inherit;
+}
+.vb-watch-row { display: flex; gap: 8px; }
+.vb-watch-row input { flex: 1; }
+.vb-watch-player { aspect-ratio: 16/9; background: #000; border-radius: 10px; overflow: hidden; }
+.vb-watch-player iframe { width: 100%; height: 100%; border: 0; display: block; }
+.vb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+.vb-card { border: 1px solid var(--sw-hairline); border-radius: 12px; overflow: hidden; background: rgba(255,255,255,.04); }
+.vb-thumb-wrap { position: relative; aspect-ratio: 16/9; cursor: pointer; background: #000; }
+.vb-thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
+.vb-play {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 2.2rem; color: #fff; text-shadow: 0 2px 8px rgba(0,0,0,.6); background: rgba(0,0,0,.15);
+  transition: background .15s;
+}
+.vb-thumb-wrap:hover .vb-play { background: rgba(0,0,0,.32); }
+.vb-thumb-wrap.vb-playing { cursor: default; }
+.vb-thumb-wrap.vb-playing iframe { width: 100%; height: 100%; border: 0; display: block; }
+.vb-card-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 3px; }
+.vb-card-title { font-size: .92rem; }
+.vb-card-by { font-size: .76rem; color: var(--text-dim); }
+
 /* ----------------------------------------------------------------- FPS meter
    Above everything (including a game's own overlays and Kart Circuit's iframe)
    and click-through except for the click that resets its low-water mark. */

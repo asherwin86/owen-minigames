@@ -1,6 +1,6 @@
 # 51 Mimi Games
 
-A hub of **85 mini-games and 3 small utility apps**, playable solo, in local
+A hub of **85 mini-games and 4 small utility apps**, playable solo, in local
 split-screen, or over the internet with friends — in a browser, as a desktop
 app, on Android and Android TV, or in a Quest headset.
 
@@ -40,7 +40,7 @@ desktop update feed on plain HTTP one port up.
 | **Board** | 12 — Chess Duel, Checkers, Backgammon, Connect Four, Battleship, … |
 | **Party** | 9 — Roulette, Slot Machine, Dice Duel, Bingo, Ludo Race, … |
 | **Cards** | 9 — Klondike Solitaire, Blackjack, Crazy Eights, Go Fish, Old Maid, … |
-| **Apps** | 3 — Calculator, Notes, Timer & Stopwatch |
+| **Apps** | 4 — Calculator, Notes, Timer & Stopwatch, Video Board |
 
 Plus **Kart Circuit**, which is its own thing: a full 3D kart racer on Three.js
 with 14 tracks, cups, items, drifting, four-way split-screen, online

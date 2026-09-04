@@ -1570,6 +1570,33 @@
       if (!session?.key || !session?.passwordHash) return Promise.resolve({ ok: false, msg: "Not signed in." });
       return apiCall("sync-rival-skins", { key: session.key, passwordHash: session.passwordHash, owned, equipped }, "profiles");
     },
+    // Feedback — submit works signed-out too (a bug report shouldn't need an
+    // account), so it doesn't gate on isSignedIn() the way the others here
+    // do; the server attaches a name only if real credentials came with it.
+    // list is dev-gated server-side.
+    submitFeedback: (category, message) => {
+      const s = session || {};
+      return apiCall("submit", { key: s.key || "", passwordHash: s.passwordHash || "", category, message }, "feedback");
+    },
+    listFeedback: () => {
+      if (!session?.key || !session?.passwordHash) return Promise.resolve({ ok: false, msg: "Not signed in." });
+      return apiCall("list", { key: session.key, passwordHash: session.passwordHash }, "feedback");
+    },
+    // Video Board — same "thin network primitive" shape as publishCake/
+    // getCakeFeed above.
+    publishVideo: (url, title) => {
+      if (!session?.key || !session?.passwordHash) return Promise.resolve({ ok: false, msg: "Sign in to post a video." });
+      return apiCall("publish", { key: session.key, passwordHash: session.passwordHash, url, title }, "videos");
+    },
+    getVideoFeed: async (limit) => {
+      if (STATIC_MODE) return { ok: false, msg: "This needs the full hosted version — not available on the static GitHub Pages preview." };
+      try {
+        const res = await fetch(`${window.MimiGames?.getServerBase() ?? ""}/api/videos/list?limit=${limit || 30}`);
+        return await res.json();
+      } catch (e) {
+        return { ok: false, msg: "Couldn't reach the hub's server." };
+      }
+    },
     // Achievements — the catalog and client-attested rule evaluation live in
     // js/achievements.js; these are just the thin network primitives it
     // calls (mirrors how ctx.reportScore in js/engine.js doesn't duplicate

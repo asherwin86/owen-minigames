@@ -626,7 +626,7 @@
   // count only ever moves when a game is deliberately added, so a mismatch
   // means something is missing rather than something is new. Bump it when you
   // add one.
-  const EXPECTED_GAMES = 88;
+  const EXPECTED_GAMES = 89;
   console.log(`Loaded ${games.length} mini-games.`);
   if (games.length !== EXPECTED_GAMES) {
     console.warn(`Expected ${EXPECTED_GAMES} games, found ${games.length}.`);

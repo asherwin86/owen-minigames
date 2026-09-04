@@ -4,6 +4,13 @@
 
   const CHANGELOG = [
     {
+      date: "2026-09-05",
+      entries: [
+        { emoji: "\u{1F4FA}", time: "00:01", title: "New app: Video Board", desc: "A shared feed of real YouTube links players here post for each other, played through YouTube's own embedded player — Board shows what's been shared (filterable to Everyone or just yours), and Watch Any Video plays any real link straight away with no need to post it first. No video is ever hosted or uploaded here: only a video id and a title are stored, playback always streams from YouTube's own servers. That's on purpose — this server's disk is wiped on every redeploy, so an actual upload feature would quietly lose people's videos, and a link-based board has no such risk." },
+        { emoji: "\u{1F4AC}", time: "00:00", title: "New: a Feedback button", desc: "Send a bug report, a suggestion, or anything else, signed in or not — a bug report shouldn't require an account first. It's a private inbox, not a public feed: nobody but a verified dev account can read what's come in, the same gate the keys dev tools already use." },
+      ],
+    },
+    {
       date: "2026-09-04",
       entries: [
         { emoji: "\u{1F50D}", time: "00:05", title: "The site is now set up to be found on Google, Brave and DuckDuckGo", desc: "There was no robots.txt and no sitemap, so search engines had nothing telling them the site wanted to be crawled or what pages existed beyond the homepage. Both exist now — the sitemap lists every one of the 85 games plus Kart Circuit, generated straight from the same game files the hub itself reads, so a new game is automatically in it with no separate list to maintain. Also added a canonical URL, an Open Graph/Twitter preview image, and fixed the page description, which still said “80+” games. Indexing itself is up to the search engines from here — this makes the site easy to crawl and correctly described, it doesn't guarantee a ranking." },

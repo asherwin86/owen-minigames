@@ -203,15 +203,18 @@ function serveStatic(req, res) {
 // Render's free-tier disk is ephemeral: data/*.json resets on every redeploy
 // and whenever the service wakes from sleep (confirmed live 2026-08-24 — an
 // account created earlier the same day was simply gone). When these two env
-// vars are set, profiles/leaderboards/cakes are mirrored to a free Upstash
-// Redis database instead of relying on that disk; local disk is still
-// written too (see saveProfilesToDisk etc.) purely as a fast local cache/
-// fallback for plain LAN hosting, where there's no ephemeral-disk problem
-// and no Upstash env vars will be set at all.
+// vars are set, profiles/leaderboards/cakes/feedback/videos are mirrored to a
+// free Upstash Redis database instead of relying on that disk; local disk is
+// still written too (see saveProfilesToDisk etc.) purely as a fast local
+// cache/fallback for plain LAN hosting, where there's no ephemeral-disk
+// problem and no Upstash env vars will be set at all. Video Board only ever
+// stores a YouTube video id and a title here — no video file is ever
+// uploaded to or stored by this server, so it carries none of the storage
+// risk actual file hosting would.
 const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL || "";
 const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || "";
 const UPSTASH_ENABLED = Boolean(UPSTASH_URL && UPSTASH_TOKEN);
-if (UPSTASH_ENABLED) console.log("Upstash Redis configured — profiles/leaderboards/cakes will persist across redeploys.");
+if (UPSTASH_ENABLED) console.log("Upstash Redis configured — profiles/leaderboards/cakes/feedback/videos will persist across redeploys.");
 
 async function upstashCmd(cmd) {
   const res = await fetch(UPSTASH_URL, {
@@ -439,6 +442,103 @@ async function saveCakesToDisk() {
 // [{ id, name, base, toppings: [...], createdAt }], newest last on disk —
 // handleCakesApi's own "list" action is what reverses to newest-first
 let cakes = []; // populated by bootstrapData() — see profiles' own `let` comment above
+
+// --- Feedback: a private inbox, not a public feed. Anyone can submit
+// (signed in or not — a bug report shouldn't require an account), but only a
+// verified dev account can read what's been sent, same gate as the keys
+// dev tools and Kart Circuit's cheats. ---
+const FEEDBACK_PATH = path.join(process.env.MIMI_DATA_DIR || ROOT, "data", "feedback.json");
+const MAX_STORED_FEEDBACK = 500;
+const FEEDBACK_CATEGORIES = new Set(["bug", "suggestion", "other"]);
+
+async function loadFeedbackFromDisk() {
+  if (UPSTASH_ENABLED) {
+    try {
+      return await upstashGetJson("mimi:feedback", []);
+    } catch (e) {
+      console.error(`Upstash feedback load failed (${e.message}) — falling back to local disk this boot.`);
+    }
+  }
+  try {
+    return JSON.parse(fs.readFileSync(FEEDBACK_PATH, "utf8"));
+  } catch (e) {
+    if (e.code !== "ENOENT") {
+      console.error(`feedback.json exists but failed to load (${e.message}) — refusing to start with an empty inbox. Fix or move aside ${FEEDBACK_PATH} and restart.`);
+      process.exit(1);
+    }
+    console.log(`No feedback.json found at ${FEEDBACK_PATH} — starting with an empty inbox.`);
+    return [];
+  }
+}
+async function saveFeedbackToDisk() {
+  try {
+    fs.mkdirSync(path.dirname(FEEDBACK_PATH), { recursive: true });
+    if (fs.existsSync(FEEDBACK_PATH)) fs.copyFileSync(FEEDBACK_PATH, `${FEEDBACK_PATH}.bak`);
+    fs.writeFileSync(FEEDBACK_PATH, JSON.stringify(feedback, null, 2));
+  } catch (e) {
+    console.error("Failed to persist feedback.json:", e.message);
+  }
+  if (UPSTASH_ENABLED) {
+    try {
+      await upstashSetJson("mimi:feedback", feedback);
+    } catch (e) {
+      console.error("Failed to persist feedback to Upstash:", e.message);
+    }
+  }
+}
+let feedback = []; // populated by bootstrapData()
+
+// --- Video Board: a shared feed of YouTube links this hub's own players
+// post for each other — not a video host. Only the video id is ever stored;
+// playback is the real YouTube's own embed player, so there's no media,
+// storage or moderation surface here beyond a short link and a title. ---
+const VIDEOS_PATH = path.join(process.env.MIMI_DATA_DIR || ROOT, "data", "videos.json");
+const MAX_STORED_VIDEOS = 300;
+// Matches an 11-char YouTube video id out of any common URL shape
+// (watch?v=, youtu.be/, embed/, shorts/) or a bare id typed directly.
+const YOUTUBE_ID_RE = /(?:youtu\.be\/|youtube(?:-nocookie)?\.com\/(?:watch\?v=|embed\/|shorts\/))([A-Za-z0-9_-]{11})|^([A-Za-z0-9_-]{11})$/;
+function extractYoutubeId(input) {
+  const trimmed = typeof input === "string" ? input.trim() : "";
+  const match = YOUTUBE_ID_RE.exec(trimmed);
+  return match ? (match[1] || match[2]) : null;
+}
+
+async function loadVideosFromDisk() {
+  if (UPSTASH_ENABLED) {
+    try {
+      return await upstashGetJson("mimi:videos", []);
+    } catch (e) {
+      console.error(`Upstash videos load failed (${e.message}) — falling back to local disk this boot.`);
+    }
+  }
+  try {
+    return JSON.parse(fs.readFileSync(VIDEOS_PATH, "utf8"));
+  } catch (e) {
+    if (e.code !== "ENOENT") {
+      console.error(`videos.json exists but failed to load (${e.message}) — refusing to start with an empty board. Fix or move aside ${VIDEOS_PATH} and restart.`);
+      process.exit(1);
+    }
+    console.log(`No videos.json found at ${VIDEOS_PATH} — starting with an empty video board.`);
+    return [];
+  }
+}
+async function saveVideosToDisk() {
+  try {
+    fs.mkdirSync(path.dirname(VIDEOS_PATH), { recursive: true });
+    if (fs.existsSync(VIDEOS_PATH)) fs.copyFileSync(VIDEOS_PATH, `${VIDEOS_PATH}.bak`);
+    fs.writeFileSync(VIDEOS_PATH, JSON.stringify(videos, null, 2));
+  } catch (e) {
+    console.error("Failed to persist videos.json:", e.message);
+  }
+  if (UPSTASH_ENABLED) {
+    try {
+      await upstashSetJson("mimi:videos", videos);
+    } catch (e) {
+      console.error("Failed to persist videos to Upstash:", e.message);
+    }
+  }
+}
+let videos = []; // populated by bootstrapData()
 
 // The server owns sortDir per game — never trusts a client's claimed
 // direction, or a malicious client could submit a terrible score claiming
@@ -1256,6 +1356,110 @@ async function handleCakesApi(req, res, action) {
   sendJson(res, 404, { ok: false, msg: "Unknown action." });
 }
 
+async function handleFeedbackApi(req, res, action) {
+  if (req.method !== "POST") { sendJson(res, 405, { ok: false, msg: "Method not allowed." }); return; }
+  let body;
+  try {
+    body = await readJsonBody(req, 8 * 1024);
+  } catch (e) {
+    sendJson(res, 400, { ok: false, msg: "Bad request." });
+    return;
+  }
+
+  if (action === "submit") {
+    // Signing in is optional — attach a name if the caller proves one,
+    // otherwise it's just from "Guest". Never trust a claimed name without
+    // the matching password, or anyone could submit as someone else.
+    const key = typeof body.key === "string" ? body.key.trim().toLowerCase() : "";
+    const passwordHash = typeof body.passwordHash === "string" ? body.passwordHash : "";
+    const entry = profiles[key];
+    const verified = entry && isNonEmptyString(passwordHash, 200) && entry.passwordHash === passwordHash;
+    const category = typeof body.category === "string" ? body.category : "";
+    const message = typeof body.message === "string" ? body.message.trim() : "";
+    if (!FEEDBACK_CATEGORIES.has(category)) {
+      sendJson(res, 400, { ok: false, msg: "Pick a category." });
+      return;
+    }
+    if (!isNonEmptyString(message, 2000)) {
+      sendJson(res, 400, { ok: false, msg: message.length > 2000 ? "That's a bit long — 2000 characters max." : "Write something first." });
+      return;
+    }
+    feedback.push({
+      id: crypto.randomUUID(),
+      name: verified ? entry.name : "Guest",
+      category,
+      message,
+      createdAt: Date.now(),
+    });
+    if (feedback.length > MAX_STORED_FEEDBACK) feedback.splice(0, feedback.length - MAX_STORED_FEEDBACK);
+    saveFeedbackToDisk();
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  if (action === "list") {
+    const key = typeof body.key === "string" ? body.key.trim().toLowerCase() : "";
+    const passwordHash = typeof body.passwordHash === "string" ? body.passwordHash : "";
+    const entry = profiles[key];
+    if (!entry || !isNonEmptyString(passwordHash, 200) || entry.passwordHash !== passwordHash || !entry.dev) {
+      sendJson(res, 200, { ok: false, msg: "Dev accounts only." });
+      return;
+    }
+    sendJson(res, 200, { ok: true, feedback: feedback.slice().reverse() });
+    return;
+  }
+
+  sendJson(res, 404, { ok: false, msg: "Unknown action." });
+}
+
+async function handleVideosApi(req, res, action) {
+  if (action === "list") {
+    // read-only, no auth needed — same trust level as leaderboards' "top"
+    const url = new URL(req.url, "http://localhost");
+    const limit = Math.max(1, Math.min(100, parseInt(url.searchParams.get("limit"), 10) || 30));
+    sendJson(res, 200, { ok: true, videos: videos.slice(-limit).reverse() });
+    return;
+  }
+
+  if (req.method !== "POST") { sendJson(res, 405, { ok: false, msg: "Method not allowed." }); return; }
+  let body;
+  try {
+    body = await readJsonBody(req, 4 * 1024);
+  } catch (e) {
+    sendJson(res, 400, { ok: false, msg: "Bad request." });
+    return;
+  }
+  const key = typeof body.key === "string" ? body.key.trim().toLowerCase() : "";
+  const passwordHash = typeof body.passwordHash === "string" ? body.passwordHash : "";
+  const entry = profiles[key];
+  if (!entry || !isNonEmptyString(passwordHash, 200) || entry.passwordHash !== passwordHash) {
+    sendJson(res, 200, { ok: false, msg: "Wrong password." });
+    return;
+  }
+
+  if (action === "publish") {
+    const videoId = extractYoutubeId(body.url);
+    if (!videoId) {
+      sendJson(res, 400, { ok: false, msg: "That doesn't look like a YouTube link." });
+      return;
+    }
+    const title = isNonEmptyString(body.title, 120) ? body.title.trim() : "Untitled";
+    videos.push({
+      id: crypto.randomUUID(),
+      name: entry.name,
+      videoId,
+      title,
+      createdAt: Date.now(),
+    });
+    if (videos.length > MAX_STORED_VIDEOS) videos.splice(0, videos.length - MAX_STORED_VIDEOS);
+    saveVideosToDisk();
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  sendJson(res, 404, { ok: false, msg: "Unknown action." });
+}
+
 // ---------- Friends (follow-based, mutual = friends) ----------
 async function handleFriendsApi(req, res, action) {
   if (req.method !== "POST") { sendJson(res, 405, { ok: false, msg: "Method not allowed." }); return; }
@@ -1678,6 +1882,20 @@ function requestHandler(req, res) {
     });
     return;
   }
+  const feedbackMatch = urlPath.match(/^\/api\/feedback\/([a-z-]+)$/);
+  if (feedbackMatch) {
+    handleFeedbackApi(req, res, feedbackMatch[1]).catch(() => {
+      sendJson(res, 500, { ok: false, msg: "Server error." });
+    });
+    return;
+  }
+  const videosMatch = urlPath.match(/^\/api\/videos\/([a-z-]+)$/);
+  if (videosMatch) {
+    handleVideosApi(req, res, videosMatch[1]).catch(() => {
+      sendJson(res, 500, { ok: false, msg: "Server error." });
+    });
+    return;
+  }
   if (urlPath === "/api/fetch-page") {
     handleFetchPageApi(req, res).catch(() => {
       sendJson(res, 500, { ok: false, msg: "Server error." });
@@ -2064,6 +2282,8 @@ async function bootstrapData() {
   backfillProfileDefaults();
   leaderboards = await loadLeaderboardsFromDisk();
   cakes = await loadCakesFromDisk();
+  feedback = await loadFeedbackFromDisk();
+  videos = await loadVideosFromDisk();
 }
 
 bootstrapData().then(() => {

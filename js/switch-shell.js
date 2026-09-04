@@ -31,6 +31,7 @@
     musicBtn: "Music",
     settingsBtn: "Settings",
     keysBtn: "Keys",
+    feedbackBtn: "Feedback",
     updatesBtn: "What's New",
     playTogetherBtn: "Play Together",
     leaderboardsBtn: "Leaderboards",
