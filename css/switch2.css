@@ -753,6 +753,7 @@ html.theme-light .btn:hover:not(:disabled), html.theme-light .btn.pad-hover-targ
 .vb-post { display: flex; gap: 8px; flex-wrap: wrap; }
 .vb-post-url { flex: 2; min-width: 200px; }
 .vb-post-title { flex: 1; min-width: 140px; }
+.vb-post-hint { margin: -4px 0 0; font-size: .78rem; color: var(--text-dim); min-height: 1.1em; }
 .vb-post input, .vb-watch-row input {
   padding: 9px 12px; border-radius: 10px; border: 1px solid var(--border);
   background: rgba(255,255,255,.06); color: var(--text); font: inherit;

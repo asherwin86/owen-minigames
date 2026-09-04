@@ -20,7 +20,7 @@ MimiGames.register({
   emoji: "📺",
   category: "Apps",
   players: "1P",
-  howTo: "Board shows YouTube links other players here have shared — filter to Everyone or just the ones you posted. Watch Any Video plays any real YouTube link straight away, no posting needed. Sign in to post to the board.",
+  howTo: "Board shows YouTube links other players here have shared — filter to Everyone or just the ones you posted. Paste a video link to post it (its title fills in on its own), or paste a channel link to post its ~15 most recent uploads at once. Watch Any Video plays any real YouTube link straight away, no posting needed. Sign in to post to the board.",
   init(root, ctx) {
     const wrap = document.createElement("div");
     wrap.className = "vb-wrap";
@@ -38,10 +38,11 @@ MimiGames.register({
           <button type="button" class="btn vb-refresh">↻ Refresh</button>
         </div>
         <div class="vb-post">
-          <input type="text" class="vb-post-url" placeholder="Paste a YouTube link to post it…" />
-          <input type="text" class="vb-post-title" placeholder="Title (optional)" maxlength="120" />
+          <input type="text" class="vb-post-url" placeholder="Paste a video or channel link…" />
+          <input type="text" class="vb-post-title" placeholder="Title" maxlength="120" />
           <button type="button" class="btn primary vb-post-btn">Post</button>
         </div>
+        <p class="vb-post-hint"></p>
         <p class="vb-status"></p>
         <div class="vb-grid"></div>
       </div>
@@ -59,6 +60,10 @@ MimiGames.register({
       const trimmed = (input || "").trim();
       const match = YOUTUBE_ID_RE.exec(trimmed);
       return match ? (match[1] || match[2]) : null;
+    }
+    const YOUTUBE_CHANNEL_RE = /youtube\.com\/(@[\w.-]{2,100}|channel\/UC[\w-]{20,}|c\/[\w.-]{2,100}|user\/[\w.-]{2,100})/i;
+    function isChannelLink(input) {
+      return YOUTUBE_CHANNEL_RE.test((input || "").trim());
     }
     function playerHtml(videoId) {
       return `<iframe width="100%" height="100%" src="https://www.youtube-nocookie.com/embed/${videoId}" title="YouTube video" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>`;
@@ -146,11 +151,65 @@ MimiGames.register({
 
     const postUrl = wrap.querySelector(".vb-post-url");
     const postTitle = wrap.querySelector(".vb-post-title");
-    wrap.querySelector(".vb-post-btn").addEventListener("click", async () => {
+    const postBtn = wrap.querySelector(".vb-post-btn");
+    const postHint = wrap.querySelector(".vb-post-hint");
+
+    // One field, auto-detected: a video link posts itself; a channel link
+    // posts everything that channel's own recent-uploads feed returns. The
+    // title field only means anything for a single video (a channel import
+    // gets each video's own real title from the feed), so it hides itself
+    // for a channel link rather than sitting there unused.
+    function syncPostMode() {
+      const url = postUrl.value.trim();
+      if (isChannelLink(url)) {
+        postTitle.classList.add("hidden");
+        postBtn.textContent = "Post Channel";
+        postHint.textContent = "Imports that channel's ~15 most recent uploads — YouTube's own limit on this feed, not one set here.";
+      } else {
+        postTitle.classList.remove("hidden");
+        postBtn.textContent = "Post";
+        postHint.textContent = "";
+      }
+    }
+    postUrl.addEventListener("input", syncPostMode);
+    syncPostMode();
+
+    // Auto-fills the real title via YouTube's own public oEmbed endpoint —
+    // no API key needed, the same endpoint any "paste a link, see a preview"
+    // feature uses. Never overwrites something already typed, and only ever
+    // runs for a single-video link (a channel import supplies its own
+    // per-video titles server-side, see publish-channel).
+    async function autofillTitle() {
+      const url = postUrl.value.trim();
+      if (postTitle.value.trim() || !extractId(url) || isChannelLink(url)) return;
+      try {
+        const res = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.title && !postTitle.value.trim()) postTitle.value = data.title;
+      } catch (e) { /* best-effort — the poster can still type a title by hand */ }
+    }
+    postUrl.addEventListener("blur", autofillTitle);
+    postUrl.addEventListener("paste", () => window.setTimeout(autofillTitle, 30));
+
+    postBtn.addEventListener("click", async () => {
       if (!window.MimiProfiles?.isSignedIn?.()) { status.textContent = "Sign in to post to the board."; return; }
-      if (!extractId(postUrl.value)) { status.textContent = "That doesn't look like a YouTube link."; return; }
+      const url = postUrl.value.trim();
+      if (isChannelLink(url)) {
+        status.textContent = "Importing that channel's recent uploads…";
+        const res = await window.MimiProfiles.publishChannel(url);
+        if (res && res.ok) {
+          postUrl.value = ""; postTitle.value = ""; syncPostMode();
+          status.textContent = `Posted ${res.count} video${res.count === 1 ? "" : "s"} from that channel.`;
+          loadFeed();
+        } else {
+          status.textContent = res?.msg || "Couldn't import that channel — try again.";
+        }
+        return;
+      }
+      if (!extractId(url)) { status.textContent = "That doesn't look like a YouTube link."; return; }
       status.textContent = "Posting…";
-      const res = await window.MimiProfiles.publishVideo(postUrl.value.trim(), postTitle.value.trim());
+      const res = await window.MimiProfiles.publishVideo(url, postTitle.value.trim());
       if (res && res.ok) {
         postUrl.value = ""; postTitle.value = "";
         loadFeed();

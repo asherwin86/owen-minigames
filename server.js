@@ -503,6 +503,61 @@ function extractYoutubeId(input) {
   return match ? (match[1] || match[2]) : null;
 }
 
+// Matches the three real channel URL shapes YouTube hands out (@handle,
+// /channel/UC…, and the older /c/Name and /user/Name forms) and normalizes
+// to a real, clickable URL — the starting point for the recent-uploads
+// import below, and also what tells "publish" a link is a channel rather
+// than an unrecognized video link, for a clearer error message.
+const YOUTUBE_CHANNEL_RE = /youtube\.com\/(@[\w.-]{2,100}|channel\/UC[\w-]{20,}|c\/[\w.-]{2,100}|user\/[\w.-]{2,100})/i;
+function extractYoutubeChannel(input) {
+  const trimmed = typeof input === "string" ? input.trim() : "";
+  const match = YOUTUBE_CHANNEL_RE.exec(trimmed);
+  return match ? `https://www.youtube.com/${match[1]}` : null;
+}
+
+// A /channel/UC… link already carries the real id; any other shape (@handle,
+// /c/Name, /user/Name) needs the channel's own page fetched once to read it
+// back out — every channel page embeds its real id in its own init data,
+// which is the same "read a public page, extract one field" shape the
+// page-fetch proxy already uses elsewhere in this file (fetchPagePrivately),
+// just without any of that feature's browser-display handling since nothing
+// fetched here is ever shown as a page, only two fields ever get pulled out
+// of it. fetchPagePrivately already carries this file's SSRF/DNS-rebinding
+// protections and redirect handling, so youtube.com's own legacy-URL
+// redirects (a /user/Name link, say) resolve transparently.
+async function resolveYoutubeChannelId(channelUrl) {
+  const direct = /\/channel\/(UC[\w-]{20,})/.exec(channelUrl);
+  if (direct) return direct[1];
+  const page = await fetchPagePrivately(channelUrl);
+  const match = /"channelId":"(UC[\w-]{20,})"/.exec(page.body) || /<link rel="canonical" href="https:\/\/www\.youtube\.com\/channel\/(UC[\w-]{20,})"/.exec(page.body);
+  if (!match) throw new Error("Couldn't find that channel.");
+  return match[1];
+}
+
+// Every channel has a real, public Atom feed of its own recent uploads —
+// YouTube's own feature (used by feed readers/podcast apps for years), not a
+// scraping workaround, and the only free/keyless way to list a channel's
+// videos at all (the alternative is the Data API and its own key). Caps at
+// the ~15 most recent uploads — YouTube's own limit on this feed, not one
+// imposed here. Parsed by hand rather than pulling in an XML library for one
+// simple, very regularly-shaped feed.
+const MAX_CHANNEL_IMPORT = 15;
+function decodeXmlEntities(s) {
+  return s.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"").replace(/&#39;/g, "'");
+}
+async function fetchChannelRecentVideos(channelId) {
+  const feed = await fetchPagePrivately(`https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`);
+  const entries = [];
+  const entryRe = /<entry>([\s\S]*?)<\/entry>/g;
+  let m;
+  while ((m = entryRe.exec(feed.body))) {
+    const idMatch = /<yt:videoId>([\w-]{11})<\/yt:videoId>/.exec(m[1]);
+    const titleMatch = /<title>([\s\S]*?)<\/title>/.exec(m[1]);
+    if (idMatch) entries.push({ videoId: idMatch[1], title: titleMatch ? decodeXmlEntities(titleMatch[1]) : "Untitled" });
+  }
+  return entries.slice(0, MAX_CHANNEL_IMPORT);
+}
+
 async function loadVideosFromDisk() {
   if (UPSTASH_ENABLED) {
     try {
@@ -1440,20 +1495,54 @@ async function handleVideosApi(req, res, action) {
   if (action === "publish") {
     const videoId = extractYoutubeId(body.url);
     if (!videoId) {
-      sendJson(res, 400, { ok: false, msg: "That doesn't look like a YouTube link." });
+      sendJson(res, 400, { ok: false, msg: extractYoutubeChannel(body.url) ? "That's a channel link — use “Post a Channel” instead." : "That doesn't look like a YouTube link." });
       return;
     }
     const title = isNonEmptyString(body.title, 120) ? body.title.trim() : "Untitled";
-    videos.push({
-      id: crypto.randomUUID(),
-      name: entry.name,
-      videoId,
-      title,
-      createdAt: Date.now(),
-    });
+    videos.push({ id: crypto.randomUUID(), name: entry.name, videoId, title, createdAt: Date.now() });
     if (videos.length > MAX_STORED_VIDEOS) videos.splice(0, videos.length - MAX_STORED_VIDEOS);
     saveVideosToDisk();
     sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  // Posts a whole channel's recent uploads at once, rather than one link at
+  // a time. There's no free/keyless API to list a channel's videos, but
+  // every channel has a real, public RSS feed of its own recent uploads
+  // (YouTube's own feature, not a workaround) — this resolves the channel id
+  // (fetching the channel's own page to read it out, if a handle/vanity URL
+  // was posted rather than a direct /channel/UC… link) and imports whatever
+  // that feed returns. The feed itself caps at the ~15 most recent uploads —
+  // YouTube's own limit, not one imposed here — so this is "recent", not
+  // "entire channel history"; said plainly in the response message.
+  if (action === "publish-channel") {
+    const channelUrl = extractYoutubeChannel(body.url);
+    if (!channelUrl) {
+      sendJson(res, 400, { ok: false, msg: "That doesn't look like a YouTube channel link." });
+      return;
+    }
+    try {
+      const channelId = await resolveYoutubeChannelId(channelUrl);
+      const found = await fetchChannelRecentVideos(channelId);
+      if (!found.length) {
+        sendJson(res, 200, { ok: false, msg: "Couldn't find any videos on that channel." });
+        return;
+      }
+      const now = Date.now();
+      // Pushed oldest-of-the-batch first so the channel's actual newest
+      // upload ends up last — list's own newest-first reversal (see
+      // handleCakesApi's comment on the same convention) then puts that
+      // newest upload at the top of the board, matching what posting them
+      // one at a time, oldest to newest, would have produced.
+      found.slice().reverse().forEach((v) => {
+        videos.push({ id: crypto.randomUUID(), name: entry.name, videoId: v.videoId, title: v.title, createdAt: now });
+      });
+      if (videos.length > MAX_STORED_VIDEOS) videos.splice(0, videos.length - MAX_STORED_VIDEOS);
+      saveVideosToDisk();
+      sendJson(res, 200, { ok: true, count: found.length });
+    } catch (e) {
+      sendJson(res, 200, { ok: false, msg: e.message || "Couldn't reach that channel." });
+    }
     return;
   }
 

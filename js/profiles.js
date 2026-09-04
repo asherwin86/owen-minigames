@@ -1588,6 +1588,12 @@
       if (!session?.key || !session?.passwordHash) return Promise.resolve({ ok: false, msg: "Sign in to post a video." });
       return apiCall("publish", { key: session.key, passwordHash: session.passwordHash, url, title }, "videos");
     },
+    // Imports a channel's recent uploads in one go rather than posting each
+    // link by hand — see server.js's own comment on publish-channel for how.
+    publishChannel: (url) => {
+      if (!session?.key || !session?.passwordHash) return Promise.resolve({ ok: false, msg: "Sign in to post a channel." });
+      return apiCall("publish-channel", { key: session.key, passwordHash: session.passwordHash, url }, "videos");
+    },
     getVideoFeed: async (limit) => {
       if (STATIC_MODE) return { ok: false, msg: "This needs the full hosted version — not available on the static GitHub Pages preview." };
       try {
