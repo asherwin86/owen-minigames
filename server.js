@@ -123,6 +123,55 @@ function buildSitemapXml(origin) {
   return xml;
 }
 
+// --- Download App links: resolved from GitHub's real releases feed at
+// request time, same "build it dynamically so it can't go stale" fix
+// already applied to the sitemap above — this replaces a version number
+// that was hand-baked into index.html's <a href> tags, which is exactly the
+// bug the 2026-09-01 changelog entry already fixed once (it just hardcoded
+// whatever was current *then*, and was six releases stale again by v1.0.58).
+// Desktop and mobile are rebuilt on different cadences (mobile TWAs don't
+// need a rebuild for a web-only change, so their APK can legitimately sit
+// on an older tag while still being fully current) — so this resolves each
+// platform's own most recent release independently, not one release for
+// all six links.
+const LATEST_RELEASE_CACHE_MS = 15 * 60 * 1000;
+const RELEASE_PLATFORM_FILES = {
+  win: "51-mimi-games-windows.exe",
+  mac: "51-mimi-games-mac.zip",
+  linux: "51-mimi-games-linux.AppImage",
+  android: "51-mimi-games-android-phone.apk",
+  androidtv: "51-mimi-games-android-tv.apk",
+  vr: "51-mimi-games-vr.apk",
+};
+let latestReleaseCache = { at: 0, data: null };
+async function fetchLatestReleaseAssets() {
+  const now = Date.now();
+  if (latestReleaseCache.data && now - latestReleaseCache.at < LATEST_RELEASE_CACHE_MS) return latestReleaseCache.data;
+  const res = await fetch("https://api.github.com/repos/asherwin86/owen-minigames/releases?per_page=10", {
+    headers: { "User-Agent": "51-mimi-games-hub", Accept: "application/vnd.github+json" },
+  });
+  if (!res.ok) throw new Error(`GitHub API returned ${res.status}`);
+  const releases = await res.json(); // newest-created first, GitHub's own default order
+  const assets = {};
+  for (const [platform, filename] of Object.entries(RELEASE_PLATFORM_FILES)) {
+    for (const release of releases) {
+      const found = release.assets.find((a) => a.name === filename);
+      if (found) { assets[platform] = found.browser_download_url; break; }
+    }
+  }
+  const data = { ok: true, assets };
+  latestReleaseCache = { at: now, data };
+  return data;
+}
+async function handleLatestReleaseApi(req, res) {
+  if (req.method !== "GET") { sendJson(res, 405, { ok: false, msg: "Method not allowed." }); return; }
+  try {
+    sendJson(res, 200, await fetchLatestReleaseAssets());
+  } catch (e) {
+    sendJson(res, 200, { ok: false, msg: e.message || "Couldn't reach GitHub." });
+  }
+}
+
 function resolvePrettyPath(urlPath) {
   const trimmed = urlPath.length > 1 && urlPath.endsWith("/") ? urlPath.slice(0, -1) : urlPath;
   const named = PRETTY_ROUTES[trimmed.toLowerCase()];
@@ -2104,6 +2153,12 @@ function requestHandler(req, res) {
   const messagesMatch = urlPath.match(/^\/api\/messages\/([a-z-]+)$/);
   if (messagesMatch) {
     handleMessagesApi(req, res, messagesMatch[1]).catch(() => {
+      sendJson(res, 500, { ok: false, msg: "Server error." });
+    });
+    return;
+  }
+  if (urlPath === "/api/latest-release") {
+    handleLatestReleaseApi(req, res).catch(() => {
       sendJson(res, 500, { ok: false, msg: "Server error." });
     });
     return;

@@ -546,6 +546,21 @@
     if (detected) {
       downloadAppMenu.querySelector(`[data-platform="${detected}"]`)?.classList.add("is-detected");
     }
+    // The hrefs above are a hardcoded fallback (a specific old release) for
+    // if this fetch fails — normally overwritten with whichever release
+    // actually has each platform's newest build, resolved server-side so a
+    // new release doesn't require ever touching this file by hand again.
+    fetch(`${window.MimiGames?.getServerBase() ?? ""}/api/latest-release`)
+      .then((r) => r.json())
+      .then((result) => {
+        if (!result?.ok) return;
+        Object.entries(result.assets || {}).forEach(([platform, url]) => {
+          if (!url) return;
+          const link = downloadAppMenu.querySelector(`[data-platform="${platform}"]`);
+          if (link) link.href = url;
+        });
+      })
+      .catch(() => {}); // hardcoded fallback hrefs above still work if this never resolves
     downloadAppBtn.onclick = (e) => {
       e.stopPropagation();
       MimiHubAudio?.playUiSound("click");
