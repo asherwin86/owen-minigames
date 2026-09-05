@@ -544,7 +544,11 @@
   } else if (downloadAppBtn && downloadAppMenu) {
     const detected = detectDownloadPlatform();
     if (detected) {
-      downloadAppMenu.querySelector(`[data-platform="${detected}"]`)?.classList.add("is-detected");
+      // Windows has two entries (installer + portable) — the installer is
+      // the better default for whoever's just detected as "on Windows",
+      // same way it's listed first in the menu now.
+      const highlightPlatform = detected === "win" ? "win-installer" : detected;
+      downloadAppMenu.querySelector(`[data-platform="${highlightPlatform}"]`)?.classList.add("is-detected");
     }
     // The hrefs above are a hardcoded fallback (a specific old release) for
     // if this fetch fails — normally overwritten with whichever release

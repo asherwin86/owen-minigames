@@ -136,6 +136,7 @@ function buildSitemapXml(origin) {
 // all six links.
 const LATEST_RELEASE_CACHE_MS = 15 * 60 * 1000;
 const RELEASE_PLATFORM_FILES = {
+  "win-installer": "51-mimi-games-windows-setup.exe",
   win: "51-mimi-games-windows.exe",
   mac: "51-mimi-games-mac.zip",
   linux: "51-mimi-games-linux.AppImage",
