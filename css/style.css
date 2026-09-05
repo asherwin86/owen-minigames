@@ -1102,6 +1102,52 @@ html.theme-light .game-tile::after {
 .profile-passkey-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 0; font-size: .82rem; }
 .profile-recovery-code { font-family: monospace; font-size: 1.05rem; letter-spacing: .04em; background: var(--bg-alt); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; display: inline-block; margin: 6px 0; user-select: all; }
 
+/* Messages (js/messages.js) */
+.message-inbox-row { cursor: pointer; padding: 6px; border-radius: 12px; margin-bottom: 4px; }
+.message-inbox-row:hover { background: var(--panel-light); }
+.message-preview { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.message-thread-list {
+  max-height: 360px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 2px;
+  min-height: 200px;
+}
+.message-bubble {
+  align-self: flex-start;
+  max-width: 78%;
+  background: var(--panel-light);
+  border: 1px solid var(--border);
+  border-radius: 14px 14px 14px 4px;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.message-bubble.mine {
+  align-self: flex-end;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+  border-radius: 14px 14px 4px 14px;
+}
+.message-bubble-text { font-size: .88rem; line-height: 1.4; overflow-wrap: anywhere; }
+.message-bubble-time { font-size: .65rem; opacity: .65; align-self: flex-end; }
+.message-input-row { display: flex; gap: 8px; margin-top: 10px; flex-shrink: 0; }
+.message-input-row input {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-alt);
+  color: var(--text);
+  font: inherit;
+  font-size: .85rem;
+}
+.message-input-row input:focus { outline: none; border-color: var(--accent2); }
+
 /* Play Together (wireless) + Local Party */
 .pt-status { margin: 0 0 14px; font-size: .85rem; color: var(--text-dim); line-height: 1.5; }
 .pt-controls { display: flex; flex-wrap: wrap; gap: 10px; }

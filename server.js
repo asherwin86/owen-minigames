@@ -214,7 +214,7 @@ function serveStatic(req, res) {
 const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL || "";
 const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || "";
 const UPSTASH_ENABLED = Boolean(UPSTASH_URL && UPSTASH_TOKEN);
-if (UPSTASH_ENABLED) console.log("Upstash Redis configured — profiles/leaderboards/cakes/feedback/videos will persist across redeploys.");
+if (UPSTASH_ENABLED) console.log("Upstash Redis configured — profiles/leaderboards/cakes/feedback/videos/messages will persist across redeploys.");
 
 async function upstashCmd(cmd) {
   const res = await fetch(UPSTASH_URL, {
@@ -594,6 +594,62 @@ async function saveVideosToDisk() {
   }
 }
 let videos = []; // populated by bootstrapData()
+
+// --- Messages: direct messages between mutual friends only — same "follow
+// each other" gate handleFriendsApi already enforces for presence/room-code,
+// reused here so there isn't a second, different notion of "friend" to keep
+// in sync. Keyed by the pair's own two profile keys sorted together, so
+// there's exactly one thread per pair regardless of who sent the first
+// message — not per-sender, and not indexed by conversation id. ---
+const MESSAGES_PATH = path.join(process.env.MIMI_DATA_DIR || ROOT, "data", "messages.json");
+const MAX_MESSAGES_PER_THREAD = 300; // per pair, not global — a global cap would let one busy pair crowd out everyone else's history
+const MAX_MESSAGE_LEN = 1000;
+function threadKeyOf(keyA, keyB) {
+  return [keyA, keyB].sort().join("|");
+}
+function isMutualFriend(key, otherKey) {
+  const entry = profiles[key];
+  const other = profiles[otherKey];
+  if (!entry || !other) return false;
+  return (entry.following || []).includes(otherKey) && (other.following || []).includes(key);
+}
+
+async function loadMessagesFromDisk() {
+  if (UPSTASH_ENABLED) {
+    try {
+      return await upstashGetJson("mimi:messages", {});
+    } catch (e) {
+      console.error(`Upstash messages load failed (${e.message}) — falling back to local disk this boot.`);
+    }
+  }
+  try {
+    return JSON.parse(fs.readFileSync(MESSAGES_PATH, "utf8"));
+  } catch (e) {
+    if (e.code !== "ENOENT") {
+      console.error(`messages.json exists but failed to load (${e.message}) — refusing to start with empty inboxes. Fix or move aside ${MESSAGES_PATH} and restart.`);
+      process.exit(1);
+    }
+    console.log(`No messages.json found at ${MESSAGES_PATH} — starting with no message history.`);
+    return {};
+  }
+}
+async function saveMessagesToDisk() {
+  try {
+    fs.mkdirSync(path.dirname(MESSAGES_PATH), { recursive: true });
+    if (fs.existsSync(MESSAGES_PATH)) fs.copyFileSync(MESSAGES_PATH, `${MESSAGES_PATH}.bak`);
+    fs.writeFileSync(MESSAGES_PATH, JSON.stringify(messages, null, 2));
+  } catch (e) {
+    console.error("Failed to persist messages.json:", e.message);
+  }
+  if (UPSTASH_ENABLED) {
+    try {
+      await upstashSetJson("mimi:messages", messages);
+    } catch (e) {
+      console.error("Failed to persist messages to Upstash:", e.message);
+    }
+  }
+}
+let messages = {}; // populated by bootstrapData() — { "<keyA>|<keyB>": [{ id, from, text, ts }] }
 
 // The server owns sortDir per game — never trusts a client's claimed
 // direction, or a malicious client could submit a terrible score claiming
@@ -1618,6 +1674,65 @@ async function handleFriendsApi(req, res, action) {
   sendJson(res, 404, { ok: false, msg: "Unknown action." });
 }
 
+// ---------- Messages (mutual-friends-only DMs) ----------
+async function handleMessagesApi(req, res, action) {
+  if (req.method !== "POST") { sendJson(res, 405, { ok: false, msg: "Method not allowed." }); return; }
+  let body;
+  try {
+    body = await readJsonBody(req, 4 * 1024);
+  } catch (e) {
+    sendJson(res, 400, { ok: false, msg: "Bad request." });
+    return;
+  }
+  const key = typeof body.key === "string" ? body.key.trim().toLowerCase() : "";
+  const passwordHash = typeof body.passwordHash === "string" ? body.passwordHash : "";
+  const entry = profiles[key];
+  if (!entry || !isNonEmptyString(passwordHash, 200) || entry.passwordHash !== passwordHash) {
+    sendJson(res, 200, { ok: false, msg: "Wrong password." });
+    return;
+  }
+
+  if (action === "inbox") {
+    const followingKeys = entry.following || [];
+    const mutualKeys = followingKeys.filter((otherKey) => (profiles[otherKey]?.following || []).includes(key));
+    const rows = mutualKeys.map((otherKey) => {
+      const other = profiles[otherKey];
+      const thread = messages[threadKeyOf(key, otherKey)] || [];
+      const last = thread.length ? thread[thread.length - 1] : null;
+      return { key: otherKey, name: other.name, avatar: other.avatar || null, lastMessage: last };
+    });
+    rows.sort((a, b) => (b.lastMessage?.ts || 0) - (a.lastMessage?.ts || 0));
+    sendJson(res, 200, { ok: true, friends: rows });
+    return;
+  }
+
+  if (action === "thread") {
+    const withKey = typeof body.withKey === "string" ? body.withKey.trim().toLowerCase() : "";
+    if (!isMutualFriend(key, withKey)) { sendJson(res, 200, { ok: false, msg: "You can only message mutual friends." }); return; }
+    const thread = messages[threadKeyOf(key, withKey)] || [];
+    sendJson(res, 200, { ok: true, name: profiles[withKey].name, messages: thread });
+    return;
+  }
+
+  if (action === "send") {
+    const toKey = typeof body.toKey === "string" ? body.toKey.trim().toLowerCase() : "";
+    const text = typeof body.text === "string" ? body.text.trim() : "";
+    if (toKey === key || !profiles[toKey]) { sendJson(res, 200, { ok: false, msg: "Invalid recipient." }); return; }
+    if (!isMutualFriend(key, toKey)) { sendJson(res, 200, { ok: false, msg: "You can only message mutual friends." }); return; }
+    if (!isNonEmptyString(text, MAX_MESSAGE_LEN)) { sendJson(res, 200, { ok: false, msg: `Message must be 1-${MAX_MESSAGE_LEN} characters.` }); return; }
+    const tk = threadKeyOf(key, toKey);
+    const message = { id: crypto.randomUUID(), from: key, text, ts: Date.now() };
+    messages[tk] = messages[tk] || [];
+    messages[tk].push(message);
+    if (messages[tk].length > MAX_MESSAGES_PER_THREAD) messages[tk].splice(0, messages[tk].length - MAX_MESSAGES_PER_THREAD);
+    saveMessagesToDisk();
+    sendJson(res, 200, { ok: true, message });
+    return;
+  }
+
+  sendJson(res, 404, { ok: false, msg: "Unknown action." });
+}
+
 // ---------- Private page viewer: the search home's search box fetches a
 // page server-side and shows it, rather than the visitor's own browser
 // contacting the site directly (no referrer/analytics JS reaches the target
@@ -1981,6 +2096,13 @@ function requestHandler(req, res) {
   const videosMatch = urlPath.match(/^\/api\/videos\/([a-z-]+)$/);
   if (videosMatch) {
     handleVideosApi(req, res, videosMatch[1]).catch(() => {
+      sendJson(res, 500, { ok: false, msg: "Server error." });
+    });
+    return;
+  }
+  const messagesMatch = urlPath.match(/^\/api\/messages\/([a-z-]+)$/);
+  if (messagesMatch) {
+    handleMessagesApi(req, res, messagesMatch[1]).catch(() => {
       sendJson(res, 500, { ok: false, msg: "Server error." });
     });
     return;
@@ -2373,6 +2495,7 @@ async function bootstrapData() {
   cakes = await loadCakesFromDisk();
   feedback = await loadFeedbackFromDisk();
   videos = await loadVideosFromDisk();
+  messages = await loadMessagesFromDisk();
 }
 
 bootstrapData().then(() => {

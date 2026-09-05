@@ -1628,5 +1628,19 @@
       if (!session?.key || !session?.passwordHash) return Promise.resolve({ ok: false, msg: "Not signed in." });
       return apiCall("list", { key: session.key, passwordHash: session.passwordHash }, "friends");
     },
+    // Messages — gated server-side on mutual friendship (same check
+    // handleFriendsApi uses for presence), not re-checked here.
+    getMessageInbox: () => {
+      if (!session?.key || !session?.passwordHash) return Promise.resolve({ ok: false, msg: "Not signed in." });
+      return apiCall("inbox", { key: session.key, passwordHash: session.passwordHash }, "messages");
+    },
+    getMessageThread: (withKey) => {
+      if (!session?.key || !session?.passwordHash) return Promise.resolve({ ok: false, msg: "Not signed in." });
+      return apiCall("thread", { key: session.key, passwordHash: session.passwordHash, withKey }, "messages");
+    },
+    sendMessage: (toKey, text) => {
+      if (!session?.key || !session?.passwordHash) return Promise.resolve({ ok: false, msg: "Not signed in." });
+      return apiCall("send", { key: session.key, passwordHash: session.passwordHash, toKey, text }, "messages");
+    },
   };
 })();
