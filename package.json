@@ -1,6 +1,6 @@
 {
   "name": "mini_games",
-  "version": "1.0.60",
+  "version": "1.0.61",
   "description": "51 Mimi Games \u2014 a hub of 80 mini-games, playable solo, split-screen, or over a wireless LAN room.",
   "main": "electron/main.js",
   "scripts": {
