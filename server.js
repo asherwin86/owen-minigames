@@ -1554,6 +1554,7 @@ async function handleFeedbackApi(req, res, action) {
     });
     if (feedback.length > MAX_STORED_FEEDBACK) feedback.splice(0, feedback.length - MAX_STORED_FEEDBACK);
     saveFeedbackToDisk();
+    pushToDevs({ type: "new-feedback", category, name: verified ? entry.name : "Guest", message });
     sendJson(res, 200, { ok: true });
     return;
   }
@@ -2221,6 +2222,19 @@ function pushPresenceMessage(targetKey, payload) {
   const json = JSON.stringify(payload);
   sockets.forEach((sock) => {
     if (sock.readyState === sock.OPEN) sock.send(json);
+  });
+}
+
+// Same idea as pushPresenceMessage, but fanned out to every currently
+// connected dev account rather than one specific key — feedback has no
+// single "recipient", any dev might be the one who wants to see it land.
+function pushToDevs(payload) {
+  const json = JSON.stringify(payload);
+  presenceByKey.forEach((sockets, key) => {
+    if (!profiles[key]?.dev) return;
+    sockets.forEach((sock) => {
+      if (sock.readyState === sock.OPEN) sock.send(json);
+    });
   });
 }
 

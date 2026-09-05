@@ -24,7 +24,49 @@
     }
   }
 
+  // Notifications: handleFeedbackApi's "submit" action pushes a
+  // "new-feedback" notice to every currently-connected dev (server-side —
+  // a non-dev browser's presence socket never receives this at all, so
+  // nothing here needs its own dev check). Same badge/Notification shape
+  // as js/messages.js's "mimi-new-message" handling.
+  const feedbackBtn = document.getElementById("feedbackBtn");
+  let badge = null;
+  let panelOpen = false;
+  let liveInboxHost = null;
+
+  if (feedbackBtn) {
+    badge = document.createElement("span");
+    badge.id = "feedbackBadge";
+    badge.className = "updates-badge hidden";
+    feedbackBtn.appendChild(badge);
+  }
+
+  function notifyNewFeedback(data) {
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    const body = data.message.length > 140 ? data.message.slice(0, 140) + "…" : data.message;
+    try {
+      new Notification(`New feedback from ${data.name}`, { body, tag: "mimi-feedback" });
+    } catch (e) { /* some browsers throw for Notification() outside a service worker */ }
+  }
+
+  window.addEventListener("mimi-new-feedback", (e) => {
+    const data = e.detail;
+    if (!data) return;
+    if (panelOpen && liveInboxHost) {
+      renderInbox(liveInboxHost); // already looking at the inbox — refresh in place
+      return;
+    }
+    badge?.classList.remove("hidden");
+    notifyNewFeedback(data);
+  });
+
   function openPanel() {
+    // Called directly from the button's click handler (still a user
+    // gesture at this point in the call stack) — Safari in particular
+    // needs that for this to ever actually prompt.
+    if (("Notification" in window) && Notification.permission === "default") Notification.requestPermission();
+    badge?.classList.add("hidden");
+
     const overlay = document.createElement("div");
     overlay.className = "updates-overlay feedback-overlay";
     overlay.innerHTML = `
@@ -43,7 +85,13 @@
         </div>
       </div>`;
     document.body.appendChild(overlay);
-    const close = () => overlay.remove();
+    panelOpen = true;
+    liveInboxHost = overlay.querySelector(".feedback-inbox");
+    const close = () => {
+      overlay.remove();
+      panelOpen = false;
+      liveInboxHost = null;
+    };
     overlay.querySelector(".help-close").addEventListener("click", close);
     overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
 
