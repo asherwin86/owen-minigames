@@ -496,6 +496,12 @@ body { padding-bottom: var(--sw-dock-h); }
 #leaderboardsBtn::before { content: "🏆"; }
 #achievementsBtn::before { content: "🎖️"; }
 #friendsBtn::before      { content: "👥"; }
+#messagesBtn::before     { content: "💬"; }
+/* Was falling through to the generic "•" above — Feedback had never gotten
+   its own glyph since joining the dock. A different icon from Messages'
+   💬 on purpose: the two sit right next to each other and need to read as
+   distinct at a glance. */
+#feedbackBtn::before     { content: "📝"; }
 
 .switch-dock .btn:hover:not(:disabled),
 .switch-dock .btn:focus-visible,
@@ -553,6 +559,7 @@ body { padding-bottom: var(--sw-dock-h); }
 .switch-dock.search-mode #leaderboardsBtn,
 .switch-dock.search-mode #achievementsBtn,
 .switch-dock.search-mode #friendsBtn,
+.switch-dock.search-mode #messagesBtn,
 .switch-dock.search-mode .download-app-wrap { display: none; }
 
 .footer {
@@ -777,6 +784,48 @@ html.theme-light .btn:hover:not(:disabled), html.theme-light .btn.pad-hover-targ
 .vb-card-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 3px; }
 .vb-card-title { font-size: .92rem; }
 .vb-card-by { font-size: .76rem; color: var(--text-dim); }
+
+/* ------------------------------------------------------------------- compact
+   Compact UI (Settings -> js/ui-density.js): smaller tiles fit more of the
+   89 games on screen at once, a smaller dock, and a slimmer strip around
+   whichever game is open so more of the window is the actual game. Pure
+   sizing/spacing overrides layered on top of everything above — none of
+   these touch .game-tile's entrance animation or transform property (see
+   CLAUDE.md's animation-fill-mode trap: the base tile-in keyframe owns
+   transform for good once `both`-fill finishes, so a hover/compact rule can
+   only ever *replace* the value on the same selector switch2.css's own fix
+   already targets, never reintroduce transform into the keyframe itself). */
+html.compact-ui {
+  --sw-dock-h: 56px;
+}
+html.compact-ui .menu-view { padding: 18px 18px 14px; }
+html.compact-ui .grid { gap: 30px 10px; }
+html.compact-ui .game-tile { width: 92px; height: 92px; border-radius: 15px; }
+html.compact-ui .game-tile:hover,
+html.compact-ui .game-tile:focus-visible,
+html.compact-ui .game-tile.pad-hover-target { transform: scale(1.07); }
+html.compact-ui .game-tile .tile-emoji { font-size: 2rem; }
+html.compact-ui .game-tile .tile-title { top: calc(100% + 4px); font-size: .64rem; }
+
+html.compact-ui .switch-dock { gap: 14px; }
+html.compact-ui .switch-dock .btn,
+html.compact-ui .switch-dock .download-app-wrap > .btn { width: 40px; height: 40px; }
+html.compact-ui .switch-dock .btn::before { font-size: 1.12rem; }
+html.compact-ui .switch-dock .btn:hover:not(:disabled),
+html.compact-ui .switch-dock .btn:focus-visible,
+html.compact-ui .switch-dock .btn.pad-hover-target:not(:disabled) { transform: scale(1.08); }
+html.compact-ui #keysBtn { font-size: .74rem !important; padding: 0 11px !important; }
+
+html.compact-ui .topbar { padding: 6px 14px; }
+
+/* The strip around whichever game is open — style.css's own rules, not
+   this skin's, so these need the same specificity bump the rest of this
+   file uses (a plain html.compact-ui prefix) rather than a full rewrite. */
+html.compact-ui .game-view { padding: 6px 14px 10px; }
+html.compact-ui .game-toolbar { margin-bottom: 6px; gap: 8px; }
+html.compact-ui .back-btn { padding: 5px 10px; font-size: .78rem; }
+html.compact-ui #gameTitle { font-size: 1.05rem; }
+html.compact-ui .game-status { font-size: .8rem; }
 
 /* ----------------------------------------------------------------- FPS meter
    Above everything (including a game's own overlays and Kart Circuit's iframe)

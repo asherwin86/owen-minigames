@@ -249,6 +249,24 @@
   paintBg();
   fpsSection.appendChild(bgBtn);
 
+  // Smaller game tiles, a smaller dock, and a slimmer toolbar around
+  // whichever game is open — js/ui-density.js owns the actual state/class.
+  const densityBtn = document.createElement("button");
+  densityBtn.type = "button";
+  densityBtn.className = "btn";
+  densityBtn.style.marginLeft = "8px";
+  const paintDensity = () => {
+    const on = window.MimiUiDensity ? window.MimiUiDensity.isOn() : false;
+    densityBtn.textContent = on ? "\u{1F5DC}️ Compact UI: On" : "\u{1F5DC}️ Compact UI: Off";
+  };
+  densityBtn.addEventListener("click", () => {
+    if (!window.MimiUiDensity) return;
+    window.MimiUiDensity.setEnabled(!window.MimiUiDensity.isOn());
+    paintDensity();
+  });
+  paintDensity();
+  fpsSection.appendChild(densityBtn);
+
   /* Graphics quality. Only affects the three 3D games (Kart Circuit, Block
    * Realm, Rival Arena) — it sets their render resolution and draw distance.
    * Everything else in the hub is 2D and doesn't care. */

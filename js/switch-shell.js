@@ -37,6 +37,7 @@
     leaderboardsBtn: "Leaderboards",
     achievementsBtn: "Achievements",
     friendsBtn: "Friends",
+    messagesBtn: "Messages",
     profileBtn: "Profile",
   };
 
