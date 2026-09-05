@@ -112,6 +112,18 @@ These are the things that have actually gone wrong here.
   guards), so a new game is in it automatically. `robots.txt` *is* a real file
   and just points at that route — don't go looking for a generator for it, and
   don't try to hand-maintain the sitemap if this ever gets rewritten.
+- **Download App's links aren't hardcoded either, for the same reason the
+  sitemap isn't.** `index.html`'s `<a>` hrefs are only a fallback; `js/app.js`
+  overwrites them from `/api/latest-release` (`server.js`), which resolves
+  each of the six platforms' *own* newest GitHub release independently (desktop
+  rebuilds most sessions, mobile only when the TWA wrapper itself needs to
+  change, so "latest" genuinely differs per platform) and caches it 15
+  minutes. This replaced a hardcoded version baked into `index.html` by hand
+  — twice: first written directly, then a 2026-09-01 "fix" that just
+  re-hardcoded whatever was current *then* and was six releases stale again
+  by v1.0.58. Don't reintroduce a third hardcoded version — if a platform's
+  link is ever wrong, the bug is in what got published to GitHub Releases,
+  not in this file.
 
 ## 5. Conventions
 
@@ -140,13 +152,37 @@ sleep. Profiles, leaderboards and cakes are mirrored to Upstash Redis when
 `UPSTASH_REDIS_REST_URL`/`_TOKEN` are set in the Render dashboard. That is
 working; verify before any deploy that would otherwise lose accounts.
 
-**Windows cannot build an installer on this machine.** Wine here cannot launch
-any Windows program at all (`wine cmd /c ver` exits 1 silently), and
-`nsis-web` needs it to run the built installer once to generate its embedded
-uninstaller. `build.win.target` is therefore `["portable", "zip"]`, both of
-which build without Wine. Put `nsis-web` back the moment Wine works. The
-portable build redirects `userData` next to the .exe via
-`PORTABLE_EXECUTABLE_DIR` so it keeps its data off the C: drive.
+**Fixed 2026-09-05 — Wine now works, real NSIS installer is back.** The
+bundled Wine electron-builder tries to download (`~/.cache/electron-builder/wine@1.0.1`,
+currently 11.0) needs a glibc newer than this machine has — confirmed via
+strace: `wineserver` segfaults immediately on load, and stock `wine.real`
+fails outright with `undefined symbol: __libc_siglongjmp, version
+GLIBC_PRIVATE`. That's a real glibc-version floor, not a config problem — a
+same-session workaround that vendored a newer glibc via `LD_LIBRARY_PATH`
+made it *worse* (mixing glibc versions crashes `wineserver` a different way).
+The actual fix was installing a real system Wine that matches this box's own
+glibc: `sudo apt-get install -y wine wine64`, then `sudo dpkg --add-architecture
+i386 && sudo apt-get install -y wine32` (NSIS installers are 32-bit PE
+binaries — wine64 alone isn't enough, and fails with a silent, unhelpful
+"not supported on this system"). electron-builder has a built-in escape
+hatch for exactly this, `USE_SYSTEM_WINE=true`, which skips its own
+(broken, cached) Wine download entirely — pass it on every Windows build:
+`USE_SYSTEM_WINE=true npx electron-builder --win nsis portable zip`.
+`build.win.target` is back to `["nsis", "portable", "zip"]` — nsis added
+back, portable/zip both kept (their own value, not just a Wine workaround:
+portable is USB/no-install-friendly, redirecting `userData` next to the .exe
+via `PORTABLE_EXECUTABLE_DIR`).
+
+**Publish releases through electron-builder's own `--publish always`, not
+`gh release create` by hand.** Every release from v1.0.49 through v1.0.59 was
+published by hand, which skips generating `latest.yml`/`latest-mac.yml`/
+`latest-linux.yml` — the metadata `electron-updater` (wired up in
+`electron/main.js`) needs to detect a new version at all. The installed
+desktop app's own auto-update was silently broken for that entire stretch as
+a result. `--publish always` also defaults to creating the release as a
+**draft** — `gh release edit <tag> --draft=false --latest` after, or it's
+invisible to both the public releases API and electron-updater's default
+(non-prerelease) check.
 
 `electron-builder` needs Node 18+ (`@noble/hashes` is ESM) — the system `node`
 may be older than that.
