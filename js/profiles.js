@@ -298,6 +298,18 @@
     presenceSocket.addEventListener("open", () => {
       presenceSocket.send(JSON.stringify({ type: "presence-hello", key: session.key, passwordHash: session.passwordHash }));
     });
+    // The only thing this socket is ever pushed today is a new-message
+    // notice (handleMessagesApi's "send" action, server-side) — re-dispatched
+    // as a plain DOM event rather than calling into js/messages.js directly,
+    // same "don't reach into another module's internals" shape as the
+    // StorageEvent dispatch in restoreSettingsSnapshot below.
+    presenceSocket.addEventListener("message", (evt) => {
+      let data;
+      try { data = JSON.parse(evt.data); } catch (e) { return; }
+      if (data?.type === "new-message") {
+        window.dispatchEvent(new CustomEvent("mimi-new-message", { detail: data }));
+      }
+    });
   }
   function disconnectPresence() {
     presenceSocket?.close();
@@ -355,6 +367,11 @@
     if (!result.ok) return result;
     session = { key, passwordHash, name: display, dev: Boolean(isDev), email: null, passkeys: [], avatar: null };
     saveSession(session);
+    // The other three sign-in paths (password login, passkey login, restored
+    // session) all open this — a fresh signup was the one path that left you
+    // looking offline to your own mutual friends, and unreachable for a
+    // message notification, until your next reload.
+    connectPresence();
     return { ok: true, msg: `Profile "${display}" created — current settings saved as your backup. Sign in with this name & password from any device on this network.` };
   }
 

@@ -1726,6 +1726,7 @@ async function handleMessagesApi(req, res, action) {
     messages[tk].push(message);
     if (messages[tk].length > MAX_MESSAGES_PER_THREAD) messages[tk].splice(0, messages[tk].length - MAX_MESSAGES_PER_THREAD);
     saveMessagesToDisk();
+    pushPresenceMessage(toKey, { type: "new-message", from: key, fromName: entry.name, text, ts: message.ts });
     sendJson(res, 200, { ok: true, message });
     return;
   }
@@ -2151,6 +2152,21 @@ const rooms = new Map();
 // page load — distinct from the per-room sockets Kart Circuit/play-together
 // only open while actively hosting/joining a race.
 const presenceByKey = new Map();
+
+// Pushes an unsolicited payload straight to every open tab/device a profile
+// key is currently connected from — same idiom the room relay already uses
+// for targeted sends (rtc-offer/rtc-answer/hostPromoted below), just against
+// presenceByKey's Set instead of a room's Map. A no-op if the recipient
+// isn't currently connected — same "honest degradation" as presence itself
+// (they'll just see it next time they open Messages, no queue/retry).
+function pushPresenceMessage(targetKey, payload) {
+  const sockets = presenceByKey.get(targetKey);
+  if (!sockets || !sockets.size) return;
+  const json = JSON.stringify(payload);
+  sockets.forEach((sock) => {
+    if (sock.readyState === sock.OPEN) sock.send(json);
+  });
+}
 
 // Used by the Friends "list" action to show a mutual friend's current room
 // code, if they're hosting/in one — reuses the existing room system rather
