@@ -266,6 +266,77 @@ const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || "";
 const UPSTASH_ENABLED = Boolean(UPSTASH_URL && UPSTASH_TOKEN);
 if (UPSTASH_ENABLED) console.log("Upstash Redis configured — profiles/leaderboards/cakes/feedback/videos/messages will persist across redeploys.");
 
+// --- Optional email notifications (Resend's REST API — no SDK, same plain-
+// fetch shape as upstashCmd above) ---
+// Messages and Feedback already push a real-time notice over the presence
+// WebSocket (pushPresenceMessage/pushToDevs, below) whenever someone's tab is
+// open — but that's a no-op the moment nobody's actually connected. This is
+// the fallback for exactly that gap: a DM or a feedback item lands while the
+// recipient isn't online, and they'd otherwise never know until they happen
+// to check back. Entirely optional (unset RESEND_API_KEY = no email code
+// path ever runs, same "off by default until configured" shape as Upstash),
+// and only ever sent to an address the profile owner typed into their own
+// Settings panel themselves (see set-email below) — never anything scraped
+// or inferred.
+const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
+// Resend's own shared testing address — works for any account with zero
+// setup (no domain to verify), which matters here since this hub has no
+// domain of its own to send *from*. Low daily volume and lands in spam more
+// often than a verified domain would, but it's a real working default
+// rather than a placeholder that silently fails; set EMAIL_FROM once a real
+// domain is verified with Resend to improve deliverability.
+const EMAIL_FROM = process.env.EMAIL_FROM || "51 Mimi Games <onboarding@resend.dev>";
+const EMAIL_ENABLED = Boolean(RESEND_API_KEY);
+if (EMAIL_ENABLED) console.log(`Resend configured — email notifications enabled (from ${EMAIL_FROM}).`);
+
+// A single global budget, not per-IP — unlike everything else rate-limited
+// in this file, an email costs real money per send regardless of who
+// triggered it, so the thing worth capping is total volume the server sends,
+// not requests from any one caller. Deliberately silent when over budget:
+// the sender's own request (a message send, a feedback submit) already
+// succeeded and shouldn't see an error over a best-effort side channel they
+// don't know exists.
+const EMAIL_RATE_WINDOW_MS = 60_000;
+const EMAIL_RATE_MAX = 20;
+let emailBucket = { count: 0, resetAt: 0 };
+function emailRateOk() {
+  const now = Date.now();
+  if (now > emailBucket.resetAt) emailBucket = { count: 0, resetAt: now + EMAIL_RATE_WINDOW_MS };
+  if (emailBucket.count >= EMAIL_RATE_MAX) return false;
+  emailBucket.count++;
+  return true;
+}
+
+// Every email body below embeds player-submitted text (a message, a
+// feedback item) into HTML — this is that text's one and only escaping
+// step, the email equivalent of feedback.js's client-side rule to always
+// use textContent, never innerHTML, for the exact same kind of string.
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+async function sendEmail(to, subject, html) {
+  if (!EMAIL_ENABLED || !to || !emailRateOk()) return;
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from: EMAIL_FROM, to, subject, html }),
+    });
+    if (!res.ok) console.error(`Email send failed (${res.status}): ${(await res.text().catch(() => "")).slice(0, 300)}`);
+  } catch (e) {
+    console.error("Email send failed:", e.message);
+  }
+}
+
+// Same idea both call sites below share: email is a fallback for when the
+// presence push has nobody to actually reach, not a second copy of every
+// notification — so both only fire this once the recipient's own presence
+// socket set is empty (they're not currently connected at all).
+function isOffline(key) {
+  return !presenceByKey.get(key)?.size;
+}
+
 async function upstashCmd(cmd) {
   const res = await fetch(UPSTASH_URL, {
     method: "POST",
@@ -769,15 +840,19 @@ function isNonEmptyString(v, maxLen) {
 //    handles is a public key and a signature-verification ceremony, exactly
 //    like every other WebAuthn Relying Party. See MDN's WebAuthn docs for the
 //    ceremony shape if any of this looks unfamiliar.
-// 2. An optional recovery email — stored for reference only. This hub has no
-//    mail server configured (it's a local/LAN dev server with a self-signed
-//    cert, not a real hosted service), so this can't actually send a reset
-//    link; it's shown back to a dev doing manual support, nothing more. Not
-//    oversold as more than that anywhere in the UI copy either.
+// 2. An optional email — NOT used for password recovery (see 3. below for
+//    that). When the optional Resend integration is configured (see
+//    EMAIL_ENABLED near the top of this file), it's where a Messages DM or
+//    a dev's Feedback item gets sent if the recipient isn't currently
+//    online to receive the real-time push — a fallback channel, not a
+//    login/reset credential. Without RESEND_API_KEY set (e.g. plain LAN
+//    hosting with no outbound email at all), this field is genuinely inert,
+//    same as it always was.
 // 3. A one-time recovery code, generated on request and shown exactly once —
-//    this is what actually solves "I forgot my password and there's no email
-//    server to reset it with." Single-use: using it to set a new password
-//    immediately invalidates it, same as any backup-code scheme.
+//    this is what actually solves "I forgot my password." Deliberately
+//    still independent of the email above (no reset-link flow): single-use,
+//    using it to set a new password immediately invalidates it, same as any
+//    backup-code scheme.
 const PENDING_CHALLENGE_TTL_MS = 5 * 60 * 1000;
 const pendingChallenges = new Map(); // key -> { challenge, expiresAt, kind: "register" | "authenticate" }
 
@@ -1187,8 +1262,8 @@ async function handleProfilesApi(req, res, action) {
     return;
   }
 
-  // --- Recovery email (reference only — see the comment above this block's
-  // definitions for why this hub can't actually send a reset email) ---
+  // --- Email (see the numbered comment above this block's definitions —
+  // this is the notification-fallback address, not a password-reset one) ---
   if (action === "set-email") {
     if (wrongPassword()) { sendJson(res, 200, { ok: false, msg: "Wrong password." }); return; }
     const email = typeof body.email === "string" ? body.email.trim().slice(0, 254) : "";
@@ -1341,8 +1416,9 @@ async function handleProfilesApi(req, res, action) {
     return;
   }
 
-  // --- One-time recovery code: the actual answer to "I forgot my password
-  // and there's no mail server to reset it with" ---
+  // --- One-time recovery code: the actual answer to "I forgot my password" —
+  // deliberately independent of the optional notification email above, so
+  // recovery works identically whether or not Resend is configured ---
   if (action === "generate-recovery-code") {
     if (wrongPassword()) { sendJson(res, 200, { ok: false, msg: "Wrong password." }); return; }
     const code = generateRecoveryCode();
@@ -1554,7 +1630,17 @@ async function handleFeedbackApi(req, res, action) {
     });
     if (feedback.length > MAX_STORED_FEEDBACK) feedback.splice(0, feedback.length - MAX_STORED_FEEDBACK);
     saveFeedbackToDisk();
-    pushToDevs({ type: "new-feedback", category, name: verified ? entry.name : "Guest", message });
+    const feedbackFromName = verified ? entry.name : "Guest";
+    pushToDevs({ type: "new-feedback", category, name: feedbackFromName, message });
+    // Email fallback for devs who aren't currently connected — see isOffline's
+    // own comment for why this only fires when the push above had nobody to
+    // actually reach.
+    Object.entries(profiles).forEach(([devKey, devEntry]) => {
+      if (devEntry.dev && devEntry.email && isOffline(devKey)) {
+        sendEmail(devEntry.email, `New feedback from ${feedbackFromName}`,
+          `<p><strong>${escapeHtml(category)}</strong> from ${escapeHtml(feedbackFromName)}:</p><p>${escapeHtml(message)}</p>`);
+      }
+    });
     sendJson(res, 200, { ok: true });
     return;
   }
@@ -1778,6 +1864,13 @@ async function handleMessagesApi(req, res, action) {
     if (messages[tk].length > MAX_MESSAGES_PER_THREAD) messages[tk].splice(0, messages[tk].length - MAX_MESSAGES_PER_THREAD);
     saveMessagesToDisk();
     pushPresenceMessage(toKey, { type: "new-message", from: key, fromName: entry.name, text, ts: message.ts });
+    // Email fallback if the recipient isn't currently connected — see
+    // isOffline's own comment for why this only fires when the push above
+    // had nobody to actually reach.
+    if (profiles[toKey].email && isOffline(toKey)) {
+      sendEmail(profiles[toKey].email, `${entry.name} messaged you on 51 Mimi Games`,
+        `<p><strong>${escapeHtml(entry.name)}</strong>:</p><p>${escapeHtml(text)}</p>`);
+    }
     sendJson(res, 200, { ok: true, message });
     return;
   }

@@ -4,6 +4,12 @@
 
   const CHANGELOG = [
     {
+      date: "2026-09-06",
+      entries: [
+        { emoji: "\u{1F4E7}", time: "00:00", title: "Email notifications, when you're not around for the real-time ones", desc: "Messages and Feedback already notify you live if you're online — this is the fallback for when you're not: add an email in your Profile's security section and, the moment a DM or (for a dev account) feedback comes in while you're offline, it's emailed there instead of just waiting for you to check back. Comes in while you're already online and connected? No email, same as before — the live notification already reached you. Off entirely unless the hub's own outbound email is configured (opt-in, like the Upstash backup already is), so plain LAN hosting is completely unaffected. Doesn't touch password recovery at all — that's still the one-time code, deliberately independent of email either way." },
+      ],
+    },
+    {
       date: "2026-09-05",
       entries: [
         { emoji: "\u{1F4EC}", time: "00:08", title: "Feedback: real notifications for the dev inbox", desc: "New feedback now pushes straight to every signed-in dev the moment it's sent — a red dot on the Feedback button, and a real notification popup if you've allowed them. Already looking at the inbox when one lands? It just quietly appears there instead of popping a redundant notification. Same push mechanism Messages already uses, fanned out to every connected dev rather than one specific person, since feedback doesn't have a single recipient." },

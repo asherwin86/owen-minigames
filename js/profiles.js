@@ -1116,11 +1116,15 @@
       securitySection.appendChild(noSupport);
     }
 
+    const emailNote = document.createElement("p");
+    emailNote.className = "profile-note";
+    emailNote.textContent = "Optional. If someone messages you or (for a dev account) feedback comes in while you're not online, it's emailed here instead of just waiting for you to check back.";
+    securitySection.appendChild(emailNote);
     const emailRow = document.createElement("div");
     emailRow.className = "profile-delete-row";
     const emailInput = document.createElement("input");
     emailInput.type = "email";
-    emailInput.placeholder = "Recovery email (optional, reference only)";
+    emailInput.placeholder = "Email (optional)";
     emailInput.autocomplete = "off";
     emailInput.value = session.email || "";
     emailInput.style.flex = "1";
