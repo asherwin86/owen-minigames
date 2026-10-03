@@ -65,6 +65,8 @@
   //  - Everywhere else it jumps to the website: in this tab on the web (Back returns
   //    here), in the browser for the other installed copies.
   const OTHER_ARCADE_URL = "https://mimi-games-hzi0.onrender.com/";
+  // ?fs=1 tells the other arcade it was reached by Switch, so it can go fullscreen (see armFullscreenOnArrival below).
+  const OTHER_ARCADE_SWITCH_URL = OTHER_ARCADE_URL + "?fs=1";
   const switch100 = document.getElementById("switch100Btn");
   const winApp = () => {
     const a = window.mimiDesktop && window.mimiDesktop.otherApp;
@@ -94,9 +96,9 @@
         || (window.matchMedia && (matchMedia("(display-mode: standalone)").matches || matchMedia("(display-mode: fullscreen)").matches))
         || navigator.standalone === true;
       if (installed) {
-        try { window.open(OTHER_ARCADE_URL, "_blank", "noopener"); return; } catch (e) { /* fall through */ }
+        try { window.open(OTHER_ARCADE_SWITCH_URL, "_blank", "noopener"); return; } catch (e) { /* fall through */ }
       }
-      location.href = OTHER_ARCADE_URL;
+      location.href = OTHER_ARCADE_SWITCH_URL;
     });
     // Windows app only: choose where the other app is.
     switch100.addEventListener("contextmenu", async (e) => {
@@ -107,6 +109,51 @@
       if (!c.ok && !c.canceled) alert(c.msg || "Couldn't use that file.");
     });
   }
+
+  /* Fullscreen on arrival. When 100 Mimi Games sends you here with ?fs=1, this page goes
+   * fullscreen so there is no browser bar. A browser only allows fullscreen after a tap or
+   * key press, and that does not carry over to a new page, so: try straight away (some
+   * browsers allow it); if refused, show a small hint and do it on the first tap or key
+   * press. iPhone Safari has no fullscreen for web pages at all, so nothing happens there;
+   * it only loses its bar as a Home Screen app. Installed copies already have no bar. */
+  function armFullscreenOnArrival() {
+    let params;
+    try { params = new URLSearchParams(location.search); } catch (e) { return; }
+    if (params.get("fs") !== "1") return;
+    params.delete("fs");
+    const rest = params.toString();
+    try { history.replaceState(history.state, "", location.pathname + (rest ? "?" + rest : "") + location.hash); } catch (e) { /* no history API */ }
+
+    const el = document.documentElement;
+    const request = el.requestFullscreen || el.webkitRequestFullscreen;
+    const installed = /Electron/i.test(navigator.userAgent || "")
+      || (window.matchMedia && (matchMedia("(display-mode: standalone)").matches || matchMedia("(display-mode: fullscreen)").matches))
+      || navigator.standalone === true;
+    if (!request || document.fullscreenElement || installed) return;
+    const go = () => {
+      try { const r = request.call(el, { navigationUI: "hide" }); return r && r.then ? r : Promise.resolve(); } catch (e) { return Promise.reject(e); }
+    };
+    go().catch(() => {
+      const hint = document.createElement("div");
+      hint.textContent = "Tap anywhere for fullscreen";
+      hint.setAttribute("role", "status");
+      hint.style.cssText = "position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:2147483000;padding:8px 16px;border-radius:999px;background:rgba(8,12,20,.85);border:1px solid rgba(255,255,255,.3);color:#fff;font:700 13px system-ui,sans-serif;pointer-events:none;";
+      document.body.appendChild(hint);
+      const events = ["pointerdown", "pointerup", "touchend", "mousedown", "keydown"];
+      let timer = 0;
+      let trying = false;
+      const stop = () => { events.forEach((n) => removeEventListener(n, onGesture, true)); hint.remove(); clearTimeout(timer); };
+      function onGesture(e) {
+        if (e.type === "keydown" && e.key === "Escape") return;
+        if (trying) return;
+        trying = true;
+        go().then(stop, () => { trying = false; });   // a press that does not count as a gesture is refused; wait for the next one
+      }
+      events.forEach((n) => addEventListener(n, onGesture, true));
+      timer = setTimeout(stop, 10000);
+    });
+  }
+  armFullscreenOnArrival();
 
   syncDock();
   // play-together.js (and anything else) adds its top-bar button after this

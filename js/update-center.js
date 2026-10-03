@@ -6,6 +6,7 @@
     {
       date: "2026-10-03",
       entries: [
+        { emoji: "\u{1F5A5}\uFE0F", time: "00:02", title: "Switching from 100 Mimi Games now goes fullscreen", desc: "When you arrive from the Switch button in 100 Mimi Games, this site asks the browser to go fullscreen, so there is no address bar. Browsers only allow that after a tap, so if it is refused a small hint says Tap anywhere for fullscreen and the first tap does it. The Switch button here does the same for 100 Mimi Games. iPhone Safari has no fullscreen for web pages at all: add the site to your Home Screen and it opens with no bars." },
         { emoji: "\u{1F500}", time: "00:01", title: "Windows app: the Switch button now opens your 100 Mimi Games app", desc: "In the Windows app, Switch to 100 Mimi Games starts your copy of the 100 Mimi Games app and closes this one. The first time, a normal file picker asks where that app is and remembers it; right-click the button to choose a different one. Opening this app a second time now just brings the open window to the front instead of showing a port-in-use error. Everywhere else the button still opens the 100 Mimi Games website." },
         { emoji: "\u{1F500}", time: "00:00", title: "New: a button to switch to 100 Mimi Games", desc: "The sister arcade, 100 Mimi Games, has its own site. There is now a Switch to 100 Mimi Games button in the bottom dock: on the website it opens in the same tab (Back returns here), and in the desktop app it opens your browser. 100 Mimi Games has the matching Switch to 51 Mimi Games button." },
       ],
