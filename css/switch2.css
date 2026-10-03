@@ -497,6 +497,7 @@ body { padding-bottom: var(--sw-dock-h); }
 #achievementsBtn::before { content: "🎖️"; }
 #friendsBtn::before      { content: "👥"; }
 #messagesBtn::before     { content: "💬"; }
+#switch100Btn::before    { content: "🔀"; }
 /* Was falling through to the generic "•" above — Feedback had never gotten
    its own glyph since joining the dock. A different icon from Messages'
    💬 on purpose: the two sit right next to each other and need to read as

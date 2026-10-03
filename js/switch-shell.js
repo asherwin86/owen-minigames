@@ -39,6 +39,7 @@
     friendsBtn: "Friends",
     messagesBtn: "Messages",
     profileBtn: "Profile",
+    switch100Btn: "100 Mimi Games",
   };
 
   function adopt(el, label) {
@@ -54,6 +55,23 @@
   function syncDock() {
     Object.entries(DOCK_BUTTONS).forEach(([id, label]) => adopt(document.getElementById(id), label));
     adopt(document.getElementById("downloadAppBtn"), "Download App");
+  }
+
+  // The sister arcade, 100 Mimi Games (a separate site). On the website it opens in
+  // this tab so Back returns here; in the desktop app, or an installed copy, it
+  // opens the normal browser, since those windows only hold this arcade.
+  const OTHER_ARCADE_URL = "https://mimi-games-hzi0.onrender.com/";
+  const switch100 = document.getElementById("switch100Btn");
+  if (switch100) {
+    switch100.addEventListener("click", () => {
+      const installed = /Electron/i.test(navigator.userAgent || "")
+        || (window.matchMedia && (matchMedia("(display-mode: standalone)").matches || matchMedia("(display-mode: fullscreen)").matches))
+        || navigator.standalone === true;
+      if (installed) {
+        try { window.open(OTHER_ARCADE_URL, "_blank", "noopener"); return; } catch (e) { /* fall through */ }
+      }
+      location.href = OTHER_ARCADE_URL;
+    });
   }
 
   syncDock();
