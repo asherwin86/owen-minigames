@@ -40,6 +40,8 @@
       "games/**/*",
       "server.js",
       "electron/main.js",
+      "electron/otherApp.js",
+      "electron/preload.js",
       "package.json",
       "!**/*.md"
     ],

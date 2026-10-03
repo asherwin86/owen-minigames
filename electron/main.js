@@ -1,10 +1,11 @@
-const { app, BrowserWindow, Menu, shell, dialog } = require("electron");
+const { app, BrowserWindow, Menu, shell, dialog, ipcMain } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const { spawn } = require("child_process");
 const http = require("http");
 const https = require("https");
 const path = require("path");
 const fs = require("fs");
+const { createOtherApp } = require("./otherApp.js");   // shared with 100 Mimi Games
 
 // Matches server.js's own PORT_IN_USE_EXIT_CODE — kept as a plain literal
 // here rather than shared/imported since the child runs as a wholly separate
@@ -92,6 +93,39 @@ if (portableDir) {
 }
 
 const PORT = process.env.PORT || 1764;
+
+/* One copy at a time. Without this a second launch (a double-click on the icon, or
+ * the Switch to 51 button in 100 Mimi Games while this app is already open) started a
+ * second server on the same port and showed a "something is already using port"
+ * error. Now it just brings the window that is already open to the front. Asked for
+ * after the portable data folder is set above, so a portable copy locks on its own. */
+const gotInstanceLock = app.requestSingleInstanceLock();
+if (!gotInstanceLock) app.quit();
+app.on("second-instance", () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.focus();
+});
+
+/** The Windows-only "Switch to 100 Mimi Games" button: pick that app's .exe once, then it starts it and closes this app. */
+function setUpOtherApp() {
+  // A source run (electron .) may pretend to be another platform, for testing. A packaged app never does.
+  const platform = (!app.isPackaged && process.env.MIMI_TEST_PLATFORM) || process.platform;
+  const otherApp = createOtherApp({
+    otherName: "100 Mimi Games", exeName: "100 Mimi Games.exe",
+    userDataDir: app.getPath("userData"),
+    // the portable build runs from a temp copy; PORTABLE_EXECUTABLE_FILE is the .exe the person actually double-clicked
+    selfExe: process.env.PORTABLE_EXECUTABLE_FILE || process.execPath,
+    platform, fs, spawn, localAppData: process.env.LOCALAPPDATA,
+    showOpenDialog: (o) => dialog.showOpenDialog(mainWindow || undefined, o),
+    quit: () => app.quit(),
+  });
+  const fromOurWindow = (e) => !!mainWindow && e.sender === mainWindow.webContents;
+  ipcMain.on("other-app:info", (e) => { e.returnValue = fromOurWindow(e) ? otherApp.info() : { supported: false, name: "" }; });
+  ipcMain.handle("other-app:status", (e) => (fromOurWindow(e) ? otherApp.status() : null));
+  ipcMain.handle("other-app:choose", (e) => (fromOurWindow(e) ? otherApp.choose() : { ok: false }));
+  ipcMain.handle("other-app:launch", (e) => (fromOurWindow(e) ? otherApp.launch() : { ok: false }));
+}
 
 // Set by the extra Start Menu shortcuts (see electron/build/installer.nsh)
 // so "Calculator (51 Mimi Games)" etc. jump straight into that tool instead
@@ -243,6 +277,7 @@ async function createWindow() {
     autoHideMenuBar: true,
     webPreferences: {
       sandbox: true,
+      preload: path.join(__dirname, "preload.js"),
     },
   });
 
@@ -329,6 +364,8 @@ autoUpdater.on("update-downloaded", (info) => {
 });
 
 app.whenReady().then(async () => {
+  if (!gotInstanceLock) return;   // another copy is already running; this one is closing
+  setUpOtherApp();
   startServer();
   try {
     await createWindow();

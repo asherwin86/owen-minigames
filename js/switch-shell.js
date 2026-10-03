@@ -57,13 +57,39 @@
     adopt(document.getElementById("downloadAppBtn"), "Download App");
   }
 
-  // The sister arcade, 100 Mimi Games (a separate site). On the website it opens in
-  // this tab so Back returns here; in the desktop app, or an installed copy, it
-  // opens the normal browser, since those windows only hold this arcade.
+  // The sister arcade, 100 Mimi Games (a separate site).
+  //  - In the Windows desktop app the button opens your copy of the 100 app and closes
+  //    this one. The first time it asks where that app is (a normal file picker) and
+  //    remembers; right-click the button to pick a different one. Picking and launching
+  //    happen in the app's main process (electron/otherApp.js); the page only asks.
+  //  - Everywhere else it jumps to the website: in this tab on the web (Back returns
+  //    here), in the browser for the other installed copies.
   const OTHER_ARCADE_URL = "https://mimi-games-hzi0.onrender.com/";
   const switch100 = document.getElementById("switch100Btn");
+  const winApp = () => {
+    const a = window.mimiDesktop && window.mimiDesktop.otherApp;
+    return a && a.supported ? a : null;
+  };
+
+  async function switchViaApp(app) {
+    let r = await app.launch();
+    if (!r.ok && r.needsChoose) {
+      if (r.msg) alert(r.msg);
+      const c = await app.choose();
+      if (c.canceled) return;                       // changed their mind: stay here, say nothing
+      if (!c.ok) { alert(c.msg || "Couldn't use that file."); return; }
+      r = await app.launch();
+    }
+    if (!r.ok) alert(r.msg || "Couldn't start 100 Mimi Games.");
+  }
+
   if (switch100) {
-    switch100.addEventListener("click", () => {
+    if (winApp()) switch100.title = "Opens your 100 Mimi Games app and closes this one. Right-click to change where that app is.";
+    switch100.addEventListener("click", async () => {
+      const app = winApp();
+      if (app) {
+        try { await switchViaApp(app); return; } catch (e) { /* fall back to the website */ }
+      }
       const installed = /Electron/i.test(navigator.userAgent || "")
         || (window.matchMedia && (matchMedia("(display-mode: standalone)").matches || matchMedia("(display-mode: fullscreen)").matches))
         || navigator.standalone === true;
@@ -71,6 +97,14 @@
         try { window.open(OTHER_ARCADE_URL, "_blank", "noopener"); return; } catch (e) { /* fall through */ }
       }
       location.href = OTHER_ARCADE_URL;
+    });
+    // Windows app only: choose where the other app is.
+    switch100.addEventListener("contextmenu", async (e) => {
+      const app = winApp();
+      if (!app) return;
+      e.preventDefault();
+      const c = await app.choose();
+      if (!c.ok && !c.canceled) alert(c.msg || "Couldn't use that file.");
     });
   }
 
