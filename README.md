@@ -1,6 +1,6 @@
 # 51 Mimi Games
 
-A hub of **85 mini-games and 4 small utility apps**, playable solo, in local
+A hub of **86 mini-games and 4 small utility apps**, playable solo, in local
 split-screen, or over the internet with friends — in a browser, as a desktop
 app, on Android and Android TV, or in a Quest headset.
 
