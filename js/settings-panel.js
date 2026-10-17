@@ -368,12 +368,151 @@
   serverSection.append(serverRow, serverStatus);
   body?.appendChild(serverSection);
 
+  // Host for other devices — only shown when this page is being served by the
+  // desktop app's own server (GET /api/host/info says hostMode). Lists the
+  // addresses other devices on the Wi-Fi can open, with a QR code, and
+  // controls whether this computer announces itself on the website so a phone
+  // that opens the site is offered a jump here. See server.js, "Hosting for
+  // other devices", for why a jump (a link) and not a silent connection.
+  const hostSection = document.createElement("div");
+  hostSection.style.marginBottom = "18px";
+  hostSection.hidden = true;
+  const hostLabel = document.createElement("p");
+  hostLabel.className = "pt-status";
+  hostLabel.style.marginBottom = "10px";
+  hostLabel.innerHTML = "<strong>Host for other devices</strong> — phones, tablets and computers on the same Wi-Fi can play from this computer instead of the website. Open one of these addresses on them, or scan the code.";
+  const hostPower = document.createElement("button");
+  hostPower.type = "button";
+  hostPower.className = "btn";
+  hostPower.style.marginBottom = "10px";
+  hostPower.textContent = "…";
+  const hostList = document.createElement("div");
+  hostList.style.cssText = "display:flex; flex-direction:column; gap:6px; margin-bottom:10px;";
+  const hostQr = document.createElement("div");
+  hostQr.style.cssText = "width:168px; height:168px; background:#fff; border-radius:8px; padding:6px; box-sizing:border-box; margin-bottom:10px;";
+  hostQr.hidden = true;
+  const hostAnnounceLabel = document.createElement("label");
+  hostAnnounceLabel.style.cssText = "display:flex; gap:8px; align-items:flex-start; font-size:.9rem; margin-bottom:6px; cursor:pointer;";
+  const hostAnnounce = document.createElement("input");
+  hostAnnounce.type = "checkbox";
+  hostAnnounce.style.marginTop = "3px";
+  const hostAnnounceText = document.createElement("span");
+  hostAnnounceText.textContent = "Announce this computer on the website, so devices on the same network that open it are offered a link here.";
+  hostAnnounceLabel.append(hostAnnounce, hostAnnounceText);
+  const hostStatus = document.createElement("p");
+  hostStatus.className = "pt-status";
+  hostStatus.style.cssText = "margin:0 0 8px; min-height:1.2em;";
+  const hostNote = document.createElement("p");
+  hostNote.className = "pt-status";
+  hostNote.style.margin = "0";
+  hostNote.textContent = "Accounts, scores and cakes made on this computer's server stay on this computer, separate from the website's. The first time, Windows may ask to allow network access — choose Private networks.";
+  hostSection.append(hostLabel, hostPower, hostList, hostQr, hostAnnounceLabel, hostStatus, hostNote);
+  body?.appendChild(hostSection);
+
+  let hostSelected = "";
+  let hostSharing = true;
+  let qrScriptPromise = null;
+  function loadQrLib() {
+    if (window.qrcode) return Promise.resolve();
+    if (!qrScriptPromise) {
+      qrScriptPromise = new Promise((resolve, reject) => {
+        const el = document.createElement("script");
+        el.src = "js/vendor/qrcode.js?v=20261018a";
+        el.onload = resolve;
+        el.onerror = () => { qrScriptPromise = null; reject(new Error("qr")); };
+        document.head.appendChild(el);
+      });
+    }
+    return qrScriptPromise;
+  }
+  function showQr(url) {
+    hostSelected = url;
+    loadQrLib().then(() => {
+      if (hostSelected !== url) return;
+      const qr = window.qrcode(0, "M");
+      qr.addData(url);
+      qr.make();
+      hostQr.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+      const svg = hostQr.querySelector("svg");
+      if (svg) { svg.style.width = "100%"; svg.style.height = "100%"; }
+      hostQr.hidden = false;
+    }).catch(() => { hostQr.hidden = true; });
+  }
+  function renderHost(info) {
+    hostList.textContent = "";
+    if (!info.addresses.length) {
+      const none = document.createElement("p");
+      none.className = "pt-status";
+      none.textContent = "No Wi-Fi or network connection found. Connect this computer to your network, then reopen this panel.";
+      hostList.appendChild(none);
+      hostQr.hidden = true;
+    }
+    info.addresses.forEach((a, i) => {
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex; gap:8px; align-items:center; flex-wrap:wrap;";
+      const addr = document.createElement("button");
+      addr.type = "button";
+      addr.className = "btn";
+      addr.style.cssText = "font-family:monospace; text-align:left;";
+      addr.textContent = a.url;
+      addr.title = `Show the QR code for this address (${a.iface})`;
+      addr.addEventListener("click", () => showQr(a.url));
+      const copy = document.createElement("button");
+      copy.type = "button";
+      copy.className = "btn";
+      copy.textContent = "Copy";
+      copy.addEventListener("click", () => {
+        navigator.clipboard?.writeText(a.url).then(() => { copy.textContent = "Copied"; setTimeout(() => { copy.textContent = "Copy"; }, 1500); }).catch(() => {});
+      });
+      row.append(addr, copy);
+      hostList.appendChild(row);
+      if (i === 0 && !hostSelected) showQr(a.url);
+    });
+    hostSharing = info.sharing !== false;
+    hostPower.textContent = hostSharing ? "⏹ Stop hosting" : "▶ Start hosting";
+    hostPower.classList.toggle("primary", !hostSharing);
+    hostList.style.opacity = hostSharing ? "" : ".45";
+    hostQr.style.opacity = hostSharing ? "" : ".25";
+    hostAnnounce.disabled = !hostSharing;
+    hostAnnounce.checked = info.announce !== false;
+    const hb = info.heartbeat || {};
+    hostStatus.textContent = !hostSharing ? "Hosting is stopped. Other devices can't connect until you start it again. This computer still works as normal."
+      : !info.announcing ? "Not announced on the website. Other devices need the address above."
+      : hb.ok === true ? "Announced on the website. Devices on your network that open it will be offered a link here."
+      : hb.ok === false ? `Not announced yet: ${hb.error || "couldn't reach the website."} The address above still works.`
+      : "Announcing…";
+  }
+  async function refreshHost() {
+    try {
+      const res = await fetch("/api/host/info", { cache: "no-store" });
+      const info = await res.json();
+      if (!info || !info.hostMode) { hostSection.hidden = true; return; }
+      hostSection.hidden = false;
+      renderHost(info);
+    } catch (e) { hostSection.hidden = true; }
+  }
+  hostPower.addEventListener("click", async () => {
+    hostPower.disabled = true;
+    try {
+      await fetch("/api/host/sharing", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on: !hostSharing }) });
+    } catch (e) { /* the refresh below shows the real state */ }
+    setTimeout(async () => { await refreshHost(); hostPower.disabled = false; }, 1200);
+  });
+  hostAnnounce.addEventListener("change", async () => {
+    hostAnnounce.disabled = true;
+    try {
+      await fetch("/api/host/announce", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on: hostAnnounce.checked }) });
+    } catch (e) { /* the refresh below shows the real state */ }
+    setTimeout(async () => { await refreshHost(); hostAnnounce.disabled = false; }, 1500);
+  });
+
   function isOpen() {
     return !overlay.classList.contains("hidden");
   }
 
   function open() {
     overlay.classList.remove("hidden");
+    refreshHost();
   }
 
   function close() {

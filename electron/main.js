@@ -172,6 +172,10 @@ function startServer() {
       ELECTRON_RUN_AS_NODE: "1",
       PORT: String(PORT),
       MIMI_DATA_DIR: app.getPath("userData"),
+      // Makes server.js a home server for other devices on the network and
+      // announces it to the website (see server.js, "Hosting for other devices").
+      // Off by default everywhere else, so the hosted site never does this.
+      MIMI_HOST_MODE: "1",
     },
     stdio: "inherit",
   });

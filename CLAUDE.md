@@ -249,3 +249,38 @@ publicly.
   cost. Profiling shows the frame body at ~17 ms with ~0% in game JavaScript, so
   they should be fine on a GPU — but that is an inference, not an observation.
   Ask the user how they actually perform.
+
+## 9. Hosting for other devices (desktop app)
+
+The Windows app can be the server for every other device on the network, and the
+website points visitors at it. Added 2026-10-18; the block in `server.js`
+headed "Hosting for other devices, and finding a host" explains the why.
+
+- **Server side** (`server.js`, all under `/api/host/`): `info`, `sharing` and
+  `announce` are for the app on the same computer (the last two refuse anything
+  that isn't a loopback socket without `x-forwarded-for`); `register`,
+  `unregister` and `lookup` are the rendezvous the *website* runs. It only
+  does anything when `MIMI_HOST_MODE=1`, which `electron/main.js` sets on the
+  child it spawns; the hosted site never has it.
+- **Why a link, not a connection:** an https page can't fetch or open a WebSocket
+  to a plain-http LAN address (mixed content), so `js/host-finder.js` shows a
+  banner and the visitor *navigates* to the host, which is allowed. Don't
+  "improve" it into a silent switch: it can't work, and a probe can't tell
+  whether the host is reachable either.
+- **Matching** is by the router's public IPv4 (last `x-forwarded-for` entry, not
+  the first, which a client can forge). A phone that reaches the website over
+  IPv6 won't match; the address + QR in Settings is the fallback.
+- **No CORS headers on these endpoints, on purpose** — anything else would let
+  any website read a visitor's LAN address.
+- **Stop hosting** is a gate in `requestHandler` and the `/mp` handler
+  (`lanBlocked`), not a process kill: the app's own window is served by that
+  server and would go blank.
+- **Accounts on a host are separate from the website's** (own `data/` in the
+  app's userData). That is inherent, not a bug.
+- 100 Mimi Games (`/home/anthony/jack/mini-games`, repo `jack-mimigames`) carries a
+  copy of this block in `hub-server/server.js`, adapted: it sends CORS only on
+  `lookup`, to its own website origins, and it can serve its built game
+  (`HUB_STATIC_DIR`). This file is the source of truth; re-port changes there.
+- Untested from here: the real Electron wiring (the child process spawn and
+  the Windows firewall prompt). Everything else was driven in a browser.
+

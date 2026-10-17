@@ -4,6 +4,12 @@
 
   const CHANGELOG = [
     {
+      date: "2026-10-18",
+      entries: [
+        { emoji: "\u{1F5A5}\uFE0F", time: "00:00", title: "Windows app: host the site for other devices, and they find it by themselves", desc: "The website's server has been unreliable, so the Windows app can now be the server. Open Settings and a new Host for other devices section lists this computer's network addresses with a QR code; anything on the same Wi-Fi can open one and play from your computer instead of the website. The app also announces itself to the website, and when a phone or another computer on the same network opens the site it is offered a Join button that jumps straight to your computer, keeping the game it was on. It is a jump rather than a silent switch because browsers do not let an https website talk to a plain-http address on your network, so there is no way for the page to connect behind your back. A Stop hosting button in the same section shuts other devices out and withdraws the announcement without closing the app, and Start hosting turns it back on; you can also turn just the announcing off if you would rather hand out the address yourself. Accounts, scores and cakes made on your computer's server stay on your computer, separate from the website's. The first time, Windows may ask to allow network access: choose Private networks. If the phone reaches the website over IPv6 it will not be matched with your computer; the address and QR code still work." },
+      ],
+    },
+    {
       date: "2026-10-03",
       entries: [
         { emoji: "\u{1F5A5}\uFE0F", time: "00:02", title: "Switching from 100 Mimi Games now goes fullscreen", desc: "When you arrive from the Switch button in 100 Mimi Games, this site asks the browser to go fullscreen, so there is no address bar. Browsers only allow that after a tap, so if it is refused a small hint says Tap anywhere for fullscreen and the first tap does it. The Switch button here does the same for 100 Mimi Games. iPhone Safari has no fullscreen for web pages at all: add the site to your Home Screen and it opens with no bars." },
