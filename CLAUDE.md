@@ -281,6 +281,8 @@ headed "Hosting for other devices, and finding a host" explains the why.
   copy of this block in `hub-server/server.js`, adapted: it sends CORS only on
   `lookup`, to its own website origins, and it can serve its built game
   (`HUB_STATIC_DIR`). This file is the source of truth; re-port changes there.
-- Untested from here: the real Electron wiring (the child process spawn and
-  the Windows firewall prompt). Everything else was driven in a browser.
+- Verified by the owner on real hardware (2026-10-18): the Windows apps'
+  built-in servers and the Android update banner. Not verifiable from the dev
+  box: the Electron child-process spawn and the Windows firewall prompt. The
+  server and browser flows were driven with Playwright against local copies.
 
