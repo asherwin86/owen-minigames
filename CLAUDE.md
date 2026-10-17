@@ -1,6 +1,6 @@
 # CLAUDE.md — 51 Mimi Games
 
-Orientation for an agent working in this repo. Written 2026-08-31 against `main`.
+Orientation for an agent working in this repo. Written 2026-08-31 against `main`; sizes and counts refreshed 2026-10-18.
 
 Read this before changing anything. It exists to stop you rediscovering the
 same five things, and to keep you from tripping the traps in section 4.
@@ -25,7 +25,7 @@ has another solution.
 
 ```
 index.html            every game's <script> tag; the only place they're listed
-server.js             the whole back end (~2000 lines): static files, APIs,
+server.js             the whole back end (~2700 lines): static files, APIs,
                       WebSocket relay, page-fetch proxy
 sw.js                 service worker — offline cache
 css/style.css         base layout and components
@@ -33,7 +33,7 @@ css/switch2.css       the Switch 2 home-menu skin, layered over style.css
 js/app.js             grid, filters, URL routing, opening/closing games
 js/engine.js          MimiGames.register + the ctx every game receives
 js/keys.js            the keys currency: daily quest, wallet, panel, leaderboard
-js/profiles.js        accounts, passkeys, local player roster (~74 KB)
+js/profiles.js        accounts, passkeys, local player roster (~80 KB)
 js/switch-shell.js    moves top-bar buttons into the bottom dock; clock/battery
 js/hub-backdrop.js    the 3D block backdrop behind the hub
 js/update-center.js   the CHANGELOG array the "What's New" panel reads
@@ -49,6 +49,11 @@ electron/main.js      desktop wrapper; spawns server.js as a child process
 | **Kart Circuit** | Three.js | Standalone page. 14 tracks, cups, split-screen, online matchmaking, WebXR. `game.js` is ~10k lines. |
 | **Block Realm** | Three.js | Voxel sandbox. Chunked meshing with baked AO, seeded terrain, saves only player-modified blocks. |
 | **Rival Arena** | Three.js | Arena FPS. ADS, gamepad, touch, aim assist, crates that spend keys. |
+
+`games/kart-circuit-unity/` is **not** Kart Circuit and not part of the hub: it's an
+experimental Unity WebGL export (Unity 6, ~69 MB, untracked) that nothing links to.
+The allowlist does serve it if the folder exists, so don't `git add -A` — stage
+explicit paths, or it ships in every deploy.
 
 Block Realm and Rival Arena **load Three.js on demand** rather than from
 `index.html` — it's 670 KB the other 85 games don't need, and the hub already
@@ -132,7 +137,7 @@ These are the things that have actually gone wrong here.
   day to find. Match it; don't strip them.
 - **User-visible changes get a `CHANGELOG` entry** at the top of the array in
   `js/update-center.js` — date, time, emoji, title, and prose that says what was
-  wrong and what changed. That file is ~116 KB and loads on every page view.
+  wrong and what changed. That file is ~140 KB and loads on every page view.
 - **Client/server validation lists are duplicated by hand** — `KART_COLOR_SWATCHES`,
   `CAKE_BASE_IDS`, `CAKE_TOPPING_IDS`. Change both.
 - **Never commit** `data/*.json` (real accounts), `certs/`, `android-signing/`,
@@ -228,11 +233,11 @@ publicly.
 
 ## 8. Known weak spots
 
-- **No tests at all.** ~37k lines of client code and a 2000-line server. The
+- **No tests at all.** ~42k lines of client code and a 2700-line server. The
   highest-value first targets are `serveStatic`'s path handling (now that it has
   an allowlist worth protecting) and the room lifecycle.
-- **Every page load parses ~1.5 MB of JavaScript** — all 87 game scripts plus a
-  110 KB changelog. `sw.js` documents this as deliberate, and it's what makes
+- **Every page load parses ~1.7 MB of JavaScript** — all 89 game scripts plus a
+  140 KB changelog. `sw.js` documents this as deliberate, and it's what makes
   the runtime cache work, but it grows with every game.
 - **`saveProfilesToDisk` rewrites the entire dataset on every mutation** — full
   file copy to `.bak`, full `writeFileSync`, full Upstash `SET`, on every save,
