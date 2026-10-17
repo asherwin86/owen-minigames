@@ -11,7 +11,7 @@ same five things, and to keep you from tripping the traps in section 4.
 
 A single-origin games hub: one static front end (`index.html` + `js/` + `css/`)
 served by one hand-rolled Node server (`server.js`), packaged for web, desktop,
-Android and Quest. **89 registered entries** — 85 games and 4 utility apps —
+Android and Quest. **90 registered entries** — 86 games and 4 utility apps —
 each a file in `js/games/` that calls `MimiGames.register({...})`, plus **Kart
 Circuit** (`games/mario-kart/`), which is a standalone page rather than a
 hub-embedded game.
@@ -50,10 +50,11 @@ electron/main.js      desktop wrapper; spawns server.js as a child process
 | **Block Realm** | Three.js | Voxel sandbox. Chunked meshing with baked AO, seeded terrain, saves only player-modified blocks. |
 | **Rival Arena** | Three.js | Arena FPS. ADS, gamepad, touch, aim assist, crates that spend keys. |
 
-`games/kart-circuit-unity/` is **not** Kart Circuit and not part of the hub: it's an
-experimental Unity WebGL export (Unity 6, ~69 MB, untracked) that nothing links to.
-The allowlist does serve it if the folder exists, so don't `git add -A` — stage
-explicit paths, or it ships in every deploy.
+**Kart Circuit Unity** (`js/games/kart-circuit-unity.js`) is a hub card that iframes a
+Unity WebGL build hosted separately on Render — the hub's allowlist doesn't serve
+.wasm/.unityweb, so the build isn't served from here. It is not the Three.js Kart
+Circuit. A local export sits untracked at `games/kart-circuit-unity/` (~69 MB); it's
+not what the card embeds, so don't `git add -A` — stage explicit paths.
 
 Block Realm and Rival Arena **load Three.js on demand** rather than from
 `index.html` — it's 670 KB the other 85 games don't need, and the hub already
@@ -236,7 +237,7 @@ publicly.
 - **No tests at all.** ~42k lines of client code and a 2700-line server. The
   highest-value first targets are `serveStatic`'s path handling (now that it has
   an allowlist worth protecting) and the room lifecycle.
-- **Every page load parses ~1.7 MB of JavaScript** — all 89 game scripts plus a
+- **Every page load parses ~1.7 MB of JavaScript** — all 90 game scripts plus a
   140 KB changelog. `sw.js` documents this as deliberate, and it's what makes
   the runtime cache work, but it grows with every game.
 - **`saveProfilesToDisk` rewrites the entire dataset on every mutation** — full
