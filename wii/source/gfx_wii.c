@@ -29,8 +29,9 @@ static void set_textured(bool on) {
   GX_SetTevOp(GX_TEVSTAGE0, on ? GX_MODULATE : GX_PASSCLR);
 }
 
-/* The atlas is stored as 4-bit alpha, two pixels per byte. GX wants IA4 (intensity high nibble, alpha low nibble)
- * in 8x4-pixel tiles, so expand and re-tile it once at start-up. */
+/* The atlas is stored as 4-bit alpha, two pixels per byte. GX wants IA4 in 8x4-pixel tiles, one byte per texel with the
+ * ALPHA in the high nibble and the intensity in the low nibble (the other way round makes every glyph an opaque box:
+ * found by running the game in Dolphin). So expand and re-tile it once at start-up. */
 static void build_font_texture(void) {
   const int W = FONT_ATLAS_W, H = FONT_ATLAS_H;
   u8 *tex = (u8 *)memalign(32, (size_t)W * H);
@@ -39,7 +40,7 @@ static void build_font_texture(void) {
       u8 byte = font_alpha4[(y * W + x) / 2];
       u8 a = (x & 1) ? (byte & 15) : (byte >> 4);
       int tile = (y / 4) * (W / 8) + (x / 8);
-      tex[tile * 32 + (y % 4) * 8 + (x % 8)] = 0xF0 | a;
+      tex[tile * 32 + (y % 4) * 8 + (x % 8)] = (u8)((a << 4) | 0x0F);
     }
   }
   DCFlushRange(tex, (u32)W * H);
@@ -203,7 +204,7 @@ void gfx_rrect(float x, float y, float w, float h, float r, Color c) {
   const float cys[4] = {y + r, y + h - r, y + h - r, y + r};
   for (int k = 0; k < 4; k++)
     for (int i = 0; i <= arc; i++) { float a = (k + (float)i / arc) * (PI_F * 0.5f) - PI_F * 0.5f; vtx(cxs[k] + cosf(a) * r, cys[k] + sinf(a) * r, c, 0, 0); }
-  vtx(cxs[0] + r, cys[0], c, 0, 0);            /* close the fan */
+  vtx(cxs[0], cys[0] - r, c, 0, 0);            /* close the fan on its first rim vertex (the top edge, where the arc starts) */
   GX_End();
 }
 

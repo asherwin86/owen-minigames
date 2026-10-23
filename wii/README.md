@@ -85,6 +85,9 @@ make -C wii/tests captures FFMPEG=/path/to/ffmpeg   # the same tests again, reco
 make -C wii/tests showcase FFMPEG=/path/to/ffmpeg   # a guided tour of every screen
 ```
 
+Without a sensor bar (the pointer then never works) the **+Control Pad** moves a cursor that speeds up the longer it is held; the
+title and instruction screens say so.
+
 The tests compile the **real** game code on the PC and drive it with scripted Wii Remote input: menu and tile selection,
 instructions → countdown → play → pause → restart → results → menu for all twelve games; each game's scoring, timer, lives
 and win/lose rules; a random "monkey" player for every game; the Wii Remote disconnect freeze; 16:9 drawing. Every test
@@ -93,6 +96,24 @@ fed by those same drawing calls. **They are not output from a Wii or an emulator
 
 Note: on this machine the sanitizer needs address randomisation off (the Makefile uses `setarch -R`); without it the
 old sanitizer runtime crashes at start-up about one run in three on WSL2's kernel, before any game code runs.
+
+## Checking it in the Dolphin emulator
+
+Dolphin runs the real `boot.dol` and is the only place the GX drawing can be checked without a console. A special
+**autopilot** build replaces the Wii Remote with a script (moves the pointer, presses buttons on a timer) so it can run
+unattended:
+
+```bash
+make -C wii BUILD=build-ap OUTDIR=out-ap EXTRA_CFLAGS=-DAUTOPILOT     # -> wii/out-ap/boot.dol  (never deploy this one)
+Dolphin.exe -u <a scratch settings folder> -b -e out-ap/boot.dol       # a separate settings folder leaves your Dolphin setup alone
+```
+
+Running it that way found two real bugs the PC tests could not see (the font texture's alpha/intensity nibbles were swapped, so
+every letter sat in a black box; and the closing vertex of rounded rectangles was wrong). Dolphin 2609a (D3D11, HLE audio, JIT64)
+then ran the title, Options, menu, instruction and Whack-a-Mole screens correctly. Not covered: sound, rumble, real Wii Remote input
+and real-hardware speed. Note that Dolphin's *own* default here had Wii Remote 1 set to "Real Wii Remote" (Controllers → Wii
+Remote 1 → Source), which shows the in-game "Wii Remote disconnected" box until a physical remote pairs: choose "Emulated Wii
+Remote" instead.
 
 ## Putting it on the Wii USB drive
 

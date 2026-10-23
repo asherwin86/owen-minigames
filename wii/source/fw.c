@@ -425,7 +425,8 @@ static void draw_title(void) {
   text_wave(WORLD_W * 0.5f, 134, 76, RGB(255, 255, 255), "Minigames", clock_t_ + 1.3f);
   gfx_text_shadow(WORLD_W * 0.5f, 244, 26, RGB(210, 235, 255), "12 games for the Wii Remote");
   for (int i = 0; i < 2; i++) btn_draw(&TITLE_BTNS[i], sel == i, i == 0 ? RGB(60, 190, 90) : RGB(90, 120, 200));
-  gfx_text_center(WORLD_W * 0.5f, 452, 18, RGB(190, 205, 235), "Point and press A     HOME: quit");
+  if (pointer_in.connected && !pointer_in.ir_valid) gfx_text_center(WORLD_W * 0.5f, 452, 17, RGB(255, 225, 120), "No sensor bar: the +Control Pad moves the cursor, A clicks     HOME: quit");
+  else gfx_text_center(WORLD_W * 0.5f, 452, 18, RGB(190, 205, 235), "Point and press A     HOME: quit");
 }
 
 static void draw_menu(void) {
@@ -475,7 +476,8 @@ static void draw_ready(void) {
     for (int k = 0; k < n; k++) gfx_text(226, y + k * 23, 20, RGB(235, 242, 255), lines[k]);
     y += n * 23 + 10;
   }
-  fit_text_plain(WORLD_W * 0.5f + 40, 360, 17, 500, RGB(160, 235, 255), g->controls);
+  fit_text_plain(WORLD_W * 0.5f + 40, 358, 17, 500, RGB(160, 235, 255), g->controls);
+  if (pointer_in.connected && !pointer_in.ir_valid && (g->inputs & INP_POINT)) fit_text_plain(WORLD_W * 0.5f, 376, 15, 540, RGB(255, 225, 120), "No sensor bar? Use the +Control Pad to move the cursor, and A to click.");
   for (int i = 0; i < 2; i++) btn_draw(&READY_BTNS[i], sel == i, i == 0 ? RGB(60, 190, 90) : RGB(90, 120, 200));
 }
 

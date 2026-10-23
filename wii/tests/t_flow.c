@@ -110,6 +110,13 @@ int main(void) {
     CHECK(d->inputs != 0, "game %d lists the buttons it uses", g);
     CHECK(fw_stars_for(g, 0) == 0 && fw_stars_for(g, 1) == 1 && fw_stars_for(g, d->star2) == 2 && fw_stars_for(g, d->star3) == 3, "star ratings for game %d", g);
   }
+  /* no sensor bar: the screens that explain the d-pad cursor draw without trouble, and the cursor drives the menu */
+  fw_init(); Input noir = idle(); noir.ir_valid = false; run(0.5f, &noir);
+  noir.a_down = true; tick(&noir, 0.016f); noir.a_down = false;
+  CHECK(fw_phase() == PH_MENU, "A on the title works without a sensor bar");
+  noir.right_down = true; tick(&noir, 0.016f); noir.right_down = false; noir.a_down = true; tick(&noir, 0.016f); noir.a_down = false;
+  CHECK(fw_phase() == PH_READY, "the +Control Pad picks a game without a sensor bar");
+  run(0.5f, &noir);                                                  /* instruction screen with the no-sensor-bar hint */
   /* a finished round shows its stars; finishing with a good score is a new best */
   begin_game(0); R.score = GAME_LIST[0]->star3; fw_finish(true, "A very long headline that has to be squeezed to fit"); 
   CHECK(fw_phase() == PH_RESULTS && fw_new_best() && fw_best(0) == GAME_LIST[0]->star3, "a high score is a new best");

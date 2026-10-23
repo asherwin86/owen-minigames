@@ -19,7 +19,8 @@ INCLUDES := source
 # Only libogc's own libraries are used: video (GX), sound (ASND) and the Wii Remote (wiiuse + bte). No libfat, no network.
 LIBS     := -lwiiuse -lbte -lasnd -logc -lm
 
-CFLAGS   = -g -O2 -Wall -Wextra $(MACHDEP) $(INCLUDE)
+# EXTRA_CFLAGS=-DAUTOPILOT builds the emulator-check variant (see source/input_wii.c); never deployed to the USB drive.
+CFLAGS   = -g -O2 -Wall -Wextra $(MACHDEP) $(INCLUDE) $(EXTRA_CFLAGS)
 CXXFLAGS = $(CFLAGS)
 LDFLAGS  = -g $(MACHDEP) -Wl,-Map,$(notdir $@).map
 

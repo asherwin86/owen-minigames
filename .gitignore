@@ -39,6 +39,8 @@ npm-debug.log*
 # Wii port: build output, packaged app, test binaries and recordings (regenerate with wii/build.sh and wii/tests)
 wii/build/
 wii/out/
+wii/build-ap/
+wii/out-ap/
 wii/dist/
 wii/*.map
 wii/tests/build/

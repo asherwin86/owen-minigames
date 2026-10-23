@@ -298,6 +298,9 @@ A native C port for the Nintendo Wii (devkitPPC + libogc), requested 2026-10-23.
 - **Toolchain trap:** the newest devkitPPC (r48+) needs glibc 2.35. This box is Ubuntu 20.04 (2.31), so the toolchain here is
   r47.1 + libogc 2.11 installed without root under `~/devkitpro-root` (see `wii/README.md`). The official package server
   blocks scripted downloads; a public mirror (`wii.leseratte10.de/devkitPro`) has the same files.
+- **Dolphin works** (D:/E:\\Dolphin-x64, 2609a): `wii/README.md` explains the scripted `AUTOPILOT` build. The PC tests' software renderer hides GX
+  bugs (an IA4 font texture with its nibbles swapped passed every test and only showed up in Dolphin), so check visual changes there.
+  The owner has no sensor bar, so the d-pad cursor path is the main way games are played; keep every pointer game playable with it.
 - **Test trap:** AddressSanitizer in this GCC crashes at start-up ~1 run in 3 on WSL2 unless ASLR is off; the tests run under
   `setarch -R` for that reason. Don't chase it as a game bug.
 - **Safety stance:** the Wii app deliberately writes nothing to the console or the USB drive (no save file) and uses no
