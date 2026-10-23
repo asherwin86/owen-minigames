@@ -35,3 +35,11 @@ Thumbs.db
 # npm/node logs
 npm-debug.log*
 *.log
+
+# Wii port: build output, packaged app, test binaries and recordings (regenerate with wii/build.sh and wii/tests)
+wii/build/
+wii/out/
+wii/dist/
+wii/*.map
+wii/tests/build/
+wii/tests/captures/

@@ -158,3 +158,19 @@ multiplayer room lifecycle.
 ## License
 
 ISC. Made for fun, and not affiliated with Nintendo.
+
+## Nintendo Wii edition
+
+`wii/` holds a native Wii homebrew port: ten Wii Remote minigames in one `boot.dol`, built with devkitPPC and libogc
+(Balloon Pop, Target Practice, Whack-a-Mole, Fruit Catcher, Memory Match, Dodge It!, Fishing Frenzy, Bubble Pop, Racing
+Challenge, Treasure Hunt). It is separate from the web hub: nothing in `wii/` is served by `server.js` or packaged into
+the desktop app.
+
+```bash
+./wii/build.sh                                # builds wii/dist/apps/owen-minigames/boot.dol
+make -C wii/tests test                        # automated tests of the game logic (run on the PC)
+./wii/scripts/deploy-usb.sh --dry-run         # then without --dry-run: copies it to F:\apps\owen-minigames\
+```
+
+Launch it from the Homebrew Channel. **Not yet run on a real Wii or in Dolphin.** Toolchain setup, controls, troubleshooting
+and the limits (it is not in USB Loader GX's game list) are in [`wii/README.md`](wii/README.md).

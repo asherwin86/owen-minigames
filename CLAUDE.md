@@ -286,3 +286,21 @@ headed "Hosting for other devices, and finding a host" explains the why.
   box: the Electron child-process spawn and the Windows firewall prompt. The
   server and browser flows were driven with Playwright against local copies.
 
+## 10. The Wii port (`wii/`)
+
+A native C port for the Nintendo Wii (devkitPPC + libogc), requested 2026-10-23. Self-contained: its own `README.md`,
+`Makefile`, `build.sh`, tests and deploy script. It is **not** part of the web hub: `server.js`'s allowlist doesn't serve
+`wii/`, and `package.json`'s `build.files` doesn't package it. Read `wii/README.md` before touching it.
+
+- **Game logic is portable on purpose.** Every game file (`wii/source/g_*.c`) only talks to `gfx.h`, `audio.h` and
+  `input.h`; the Wii-only back ends are `gfx_wii.c`, `audio_wii.c`, `input_wii.c`. That is what lets `wii/tests` compile the
+  real games on the PC with stub or software-rendered graphics. Keep it that way: don't call libogc from a game file.
+- **Toolchain trap:** the newest devkitPPC (r48+) needs glibc 2.35. This box is Ubuntu 20.04 (2.31), so the toolchain here is
+  r47.1 + libogc 2.11 installed without root under `~/devkitpro-root` (see `wii/README.md`). The official package server
+  blocks scripted downloads; a public mirror (`wii.leseratte10.de/devkitPro`) has the same files.
+- **Test trap:** AddressSanitizer in this GCC crashes at start-up ~1 run in 3 on WSL2 unless ASLR is off; the tests run under
+  `setarch -R` for that reason. Don't chase it as a game bug.
+- **Safety stance:** the Wii app deliberately writes nothing to the console or the USB drive (no save file) and uses no
+  NAND/IOS/ES/network calls. `scripts/deploy-usb.sh` only writes `apps/owen-minigames/` and moves any old copy aside.
+- **Unverified:** nothing has run on a real Wii or in Dolphin. The captured videos/screenshots come from `tests/gfx_soft.c`, a PC
+  software renderer, and are not console output.
