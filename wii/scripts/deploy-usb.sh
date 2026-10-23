@@ -67,7 +67,12 @@ if [ "$MODE" = "wsl" ]; then
   say "target: $DEST (existing copy: $EXISTS)"
   [ "$DRY" = 1 ] && { echo "dry run: would copy ${FILES[*]}"; exit 0; }
   mkdir -p "$ROOT/apps"
-  if [ "$EXISTS" = yes ]; then BK="$DEST.backup-$(date +%Y%m%d-%H%M%S)"; mv "$DEST" "$BK"; say "existing copy moved to $BK"; fi
+  if [ "$EXISTS" = yes ]; then
+    BK="$DEST.backup-$(date +%Y%m%d-%H%M%S)"; mv "$DEST" "$BK"
+    # the Homebrew Channel lists any apps\ folder that contains a boot.dol, so rename it in the backup to keep it out of the list
+    [ -f "$BK/boot.dol" ] && mv "$BK/boot.dol" "$BK/boot.dol.old"
+    say "existing copy moved to $BK (its boot.dol is now boot.dol.old, so the Homebrew Channel won't list it; rename it back to restore)"
+  fi
   mkdir -p "$DEST"
   for f in "${FILES[@]}"; do cp "$SRC/$f" "$DEST/$f"; done
   sync
@@ -78,7 +83,12 @@ else
   say "target: ${DRIVE}:\\apps\\$APP (existing copy: $EXISTS)"
   [ "$DRY" = 1 ] && { echo "dry run: would copy ${FILES[*]} from $WSRC"; exit 0; }
   STAMP="$(date +%Y%m%d-%H%M%S)"
-  if [ "$EXISTS" = yes ]; then PS "Move-Item -LiteralPath '${DRIVE}:\\apps\\$APP' -Destination '${DRIVE}:\\apps\\$APP.backup-$STAMP'" >/dev/null; say "existing copy moved to ${DRIVE}:\\apps\\$APP.backup-$STAMP"; fi
+  if [ "$EXISTS" = yes ]; then
+    PS "Move-Item -LiteralPath '${DRIVE}:\\apps\\$APP' -Destination '${DRIVE}:\\apps\\$APP.backup-$STAMP'" >/dev/null
+    # the Homebrew Channel lists any apps\ folder that contains a boot.dol, so rename it in the backup to keep it out of the list
+    PS "if (Test-Path '${DRIVE}:\\apps\\$APP.backup-$STAMP\\boot.dol') { Rename-Item -LiteralPath '${DRIVE}:\\apps\\$APP.backup-$STAMP\\boot.dol' -NewName 'boot.dol.old' }" >/dev/null
+    say "existing copy moved to ${DRIVE}:\\apps\\$APP.backup-$STAMP (its boot.dol is now boot.dol.old, so the Homebrew Channel won't list it; rename it back to restore)"
+  fi
   PS "New-Item -ItemType Directory -Force -Path '${DRIVE}:\\apps\\$APP' | Out-Null" >/dev/null
   for f in "${FILES[@]}"; do PS "Copy-Item -LiteralPath '$WSRC\\$f' -Destination '${DRIVE}:\\apps\\$APP\\$f'" >/dev/null; done
   for f in "${FILES[@]}"; do

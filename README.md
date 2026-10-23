@@ -161,9 +161,9 @@ ISC. Made for fun, and not affiliated with Nintendo.
 
 ## Nintendo Wii edition
 
-`wii/` holds a native Wii homebrew port: ten Wii Remote minigames in one `boot.dol`, built with devkitPPC and libogc
+`wii/` holds a native Wii homebrew port: twelve Wii Remote minigames in one `boot.dol`, built with devkitPPC and libogc
 (Balloon Pop, Target Practice, Whack-a-Mole, Fruit Catcher, Memory Match, Dodge It!, Fishing Frenzy, Bubble Pop, Racing
-Challenge, Treasure Hunt). It is separate from the web hub: nothing in `wii/` is served by `server.js` or packaged into
+Challenge, Treasure Hunt, Outlaw Shootout, Fist Fury). It is separate from the web hub: nothing in `wii/` is served by `server.js` or packaged into
 the desktop app.
 
 ```bash
@@ -172,5 +172,5 @@ make -C wii/tests test                        # automated tests of the game logi
 ./wii/scripts/deploy-usb.sh --dry-run         # then without --dry-run: copies it to F:\apps\owen-minigames\
 ```
 
-Launch it from the Homebrew Channel. **Not yet run on a real Wii or in Dolphin.** Toolchain setup, controls, troubleshooting
+Launch it from the Homebrew Channel. Verified working on a real Wii by the owner (2026-10-23) before the last two games were added; not run in Dolphin. Toolchain setup, controls, troubleshooting
 and the limits (it is not in USB Loader GX's game list) are in [`wii/README.md`](wii/README.md).

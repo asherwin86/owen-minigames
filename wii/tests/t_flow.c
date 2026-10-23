@@ -27,7 +27,7 @@ int main(void) {
   i = idle(); i.a_down = true; tick(&i, 0.016f);
   CHECK(fw_phase() == PH_MENU, "title -> menu");
   for (int g = 0; g < GAME_COUNT; g++) {       /* every tile can be picked with the pointer */
-    float x = 14 + (g % 5) * 124.0f + 58, y = 92 + (g / 5) * 180.0f + 80;
+    float x, y; fw_tile_center(g, &x, &y);
     i = at(x, y); tick(&i, 0.016f);
     i.a_down = true; tick(&i, 0.016f);
     CHECK(fw_phase() == PH_READY && fw_current() == g, "tile %d opens its instructions (phase %d, game %d)", g, (int)fw_phase(), fw_current());

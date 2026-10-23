@@ -1,7 +1,7 @@
 # Host tests: compiles the real game code with stub graphics/sound/input and runs scripted play.   make test
 CC      ?= gcc
 CFLAGS  := -std=gnu11 -O1 -g -Wall -Wextra -Wno-unused-function -Wno-missing-field-initializers -fsanitize=address,undefined -fno-omit-frame-pointer -rdynamic -I../source
-GAMES   := balloon target whack fruit memory dodge fishing bubble racing treasure
+GAMES   := balloon target whack fruit memory dodge fishing bubble racing treasure gun fight
 GSRC    := $(addprefix ../source/g_,$(addsuffix .c,$(GAMES)))
 CORE    := ../source/util.c ../source/fw.c ../source/fx.c ../source/games.c ../source/save_none.c harness.c
 BIN     := build

@@ -30,7 +30,7 @@ typedef struct GameDef {
   CursorKind cursor;                           /* what the framework draws at the pointer while playing */
 } GameDef;
 
-#define GAME_COUNT 10
+#define GAME_COUNT 12
 extern const GameDef *const GAME_LIST[GAME_COUNT];
 
 typedef enum { PH_TITLE, PH_MENU, PH_READY, PH_COUNT, PH_PLAY, PH_PAUSE, PH_RESULTS } Phase;
@@ -51,5 +51,6 @@ int fw_current(void);
 int fw_best(int game);
 bool fw_new_best(void);
 void fw_open(int game);                        /* jump straight to a game's instruction screen */
+void fw_tile_center(int game, float *x, float *y);   /* where a game's tile is on the menu (world coordinates) */
 
 #endif

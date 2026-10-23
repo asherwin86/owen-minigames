@@ -11,7 +11,7 @@ static void glide(float x, float y, float seconds) {
 }
 static void click(void) { Input in = press_a_at(px_, py_); tick(&in, 1.0f / 60); }
 static void wait(float s) { Input in = at(px_, py_); run(s, &in); }
-static void tile_center(int g, float *x, float *y) { *x = 14 + (g % 5) * 124.0f + 58; *y = 92 + (g / 5) * 180.0f + 80; }
+static void tile_center(int g, float *x, float *y) { fw_tile_center(g, x, y); }
 
 int main(void) {
   rng_seed(99); fw_init();

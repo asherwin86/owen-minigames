@@ -104,11 +104,12 @@ static const Btn PAUSE_BTNS[3] = {{220, 190, 200, 54, "Resume"}, {220, 256, 200,
 static const Btn RESULT_BTNS[2] = {{120, 392, 190, 56, "Play again"}, {330, 392, 190, 56, "Menu"}};
 static const Btn READY_BTNS[2] = {{120, 404, 190, 56, "Start!"}, {330, 404, 190, 56, "Back"}};
 
-#define TILE_COLS 5
-#define TILE_W 116.0f
-#define TILE_H 168.0f
+#define TILE_COLS 4
+#define TILE_W 146.0f
+#define TILE_H 112.0f
 #define TILE_GAP 8.0f
-static void tile_pos(int i, float *x, float *y) { *x = 14 + (i % TILE_COLS) * (TILE_W + TILE_GAP); *y = 92 + (i / TILE_COLS) * (TILE_H + 12); }
+static void tile_pos(int i, float *x, float *y) { *x = 16 + (i % TILE_COLS) * (TILE_W + TILE_GAP); *y = 86 + (i / TILE_COLS) * (TILE_H + 8); }
+void fw_tile_center(int g, float *x, float *y) { float tx, ty; tile_pos(g, &tx, &ty); *x = tx + TILE_W * 0.5f; *y = ty + TILE_H * 0.5f; }
 
 void fw_update(float dt, const Input *in) {
   pointer_in = *in;
@@ -256,7 +257,7 @@ static void draw_title(void) {
   }
   gfx_text_shadow(WORLD_W * 0.5f, 90, 84, RGB(255, 235, 120), "Owen's");
   gfx_text_shadow(WORLD_W * 0.5f, 170, 84, RGB(255, 255, 255), "Minigames");
-  gfx_text_shadow(WORLD_W * 0.5f, 270, 26, RGB(210, 235, 255), "10 games for the Wii Remote");
+  gfx_text_shadow(WORLD_W * 0.5f, 270, 26, RGB(210, 235, 255), "12 games for the Wii Remote");
   if (((int)(clock_t_ * 2)) & 1) gfx_text_shadow(WORLD_W * 0.5f, 340, 40, RGB(255, 255, 255), "Press A to play");
   gfx_text_center(WORLD_W * 0.5f, 436, 20, RGB(190, 205, 235), "Press HOME to quit");
 }
@@ -270,12 +271,12 @@ static void draw_menu(void) {
     float grow = hot ? 5 : 0;
     gfx_rrect(x - grow - 3, y - grow - 3, TILE_W + 2 * grow + 6, TILE_H + 2 * grow + 6, 16, hot ? RGB(255, 255, 255) : RGBA(0, 0, 0, 110));
     gfx_rrect(x - grow, y - grow, TILE_W + 2 * grow, TILE_H + 2 * grow, 14, g->c2);
-    gfx_rect_grad(x - grow + 8, y - grow + 8, TILE_W + 2 * grow - 16, 84 + grow, g->c1, g->c2);
-    g->icon(x + TILE_W * 0.5f, y + 50, 70);
-    fit_text(x + TILE_W * 0.5f, y + TILE_H - 74 + (hot ? 2 : 0), 21, TILE_W - 10, RGB(255, 255, 255), g->name);
+    gfx_rect_grad(x - grow + 6, y - grow + 6, TILE_W + 2 * grow - 12, 62 + grow, g->c1, g->c2);
+    g->icon(x + TILE_W * 0.5f, y + 30, 40);
+    fit_text(x + TILE_W * 0.5f, y + TILE_H - 46 + (hot ? 2 : 0), 20, TILE_W - 12, RGB(255, 255, 255), g->name);
     char b[24];
     if (best[i] > 0) snprintf(b, sizeof b, "Best %d", best[i]); else snprintf(b, sizeof b, "New!");
-    gfx_text_center(x + TILE_W * 0.5f, y + TILE_H - 30, 17, RGB(255, 245, 190), b);
+    gfx_text_center(x + TILE_W * 0.5f, y + TILE_H - 24, 16, RGB(255, 245, 190), b);
   }
   gfx_text_center(WORLD_W * 0.5f, 452, 19, RGB(200, 215, 240), "Point and press A     B: back     HOME: back");
 }
@@ -311,7 +312,7 @@ static void draw_pause(void) {
 static void draw_results(void) {
   dim(0.62f);
   char b[48];
-  gfx_text_shadow(WORLD_W * 0.5f, 70, 54, round_won ? RGB(130, 255, 160) : RGB(255, 130, 130), headline);
+  fit_text(WORLD_W * 0.5f, 70, 54, 600, round_won ? RGB(130, 255, 160) : RGB(255, 130, 130), headline);
   snprintf(b, sizeof b, "Score: %d", R.score);
   gfx_text_shadow(WORLD_W * 0.5f, 160, 64, RGB(255, 255, 255), b);
   if (new_best_flag) { if (((int)(clock_t_ * 3)) & 1) gfx_text_shadow(WORLD_W * 0.5f, 240, 38, RGB(255, 225, 90), "NEW BEST!"); }

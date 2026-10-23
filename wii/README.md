@@ -1,14 +1,15 @@
 # Owen's Minigames — Nintendo Wii edition
 
-Ten short Wii Remote games in one native Wii homebrew app (`boot.dol`), made from the 51 Mimi Games project: the
+Twelve short Wii Remote games in one native Wii homebrew app (`boot.dol`), made from the 51 Mimi Games project: the
 rules of Balloon Pop, Whack-a-Mole, Fruit Catcher, Memory Match, Bubble Pop and Target Practice come from the
-JavaScript games in `../js/games/`, rewritten in C for the Wii; Dodge It!, Fishing Frenzy, Racing Challenge and
-Treasure Hunt are new. Everything is drawn with shapes and an embedded font and every sound is synthesised in code, so
+JavaScript games in `../js/games/`, rewritten in C for the Wii; Dodge It!, Fishing Frenzy, Racing Challenge,
+Treasure Hunt, Outlaw Shootout (a gun game) and Fist Fury (a fighting game) are new. Everything is drawn with shapes and an embedded font and every sound is synthesised in code, so
 the app is one self-contained file plus a tiny `meta.xml` and `icon.png`. No internet, no save files, no extra data.
 
-> **Status, honestly:** it builds cleanly and its game logic passes an automated test suite on a PC. It has **not been
-> run on a Wii or in the Dolphin emulator** (neither was available while it was written), so every "it works on the
-> console" claim is still to be confirmed by you. See [Known limitations](#known-limitations-and-untested-features).
+> **Status, honestly:** it builds cleanly and its game logic passes an automated test suite on a PC. The original ten games
+> were run on a real Wii by the owner (2026-10-23) and work. **Outlaw Shootout and Fist Fury, added afterwards, have only
+> been tested on a PC**, and nothing has been run in the Dolphin emulator. See
+> [Known limitations](#known-limitations-and-untested-features).
 
 ## The games
 
@@ -24,6 +25,8 @@ the app is one self-contained file plus a tiny `meta.xml` and `icon.png`. No int
 | 8 | **Bubble Pop** | point to aim, **A** fires | Match 3+ colours; unsupported bubbles fall (+20 each); a new row drops every 6 shots. |
 | 9 | **Racing Challenge** | **A**/**2** gas, **B**/**1** brake; steer with the pad, tilt, or pointing | 40 s road race, pseudo-3D. Coins +20, checkpoints +8 s, crashes cost time. |
 | 10 | **Treasure Hunt** | point + **A** | 50 s. Five treasures under 24 bushes; the glow goes blue→red as you get closer. Each dig costs 1.5 s. |
+| 11 | **Outlaw Shootout** | point, **B** or **A** fires, **1** / swing reloads | 60 s, 3 hearts. Bandits pop up in windows and behind barrels and shoot back if you're slow (headshots 150+); townsfolk in white hats must not be shot. Six bullets. |
+| 12 | **Fist Fury** | **+Control Pad** move, **Up**/**2** jump, **A** punch, **B** kick, hold **1** block | 120 s. A fighting game against five computer fighters, each tougher; you recover 25 hp after each win. Combos score more. |
 
 Everywhere: **HOME** or **+** pauses (Resume / Restart / Menu), **B** goes back, and the Wii Remote disconnecting freezes
 the game until it reconnects. Without the sensor bar, the **+Control Pad** moves an on-screen cursor instead.
@@ -81,7 +84,7 @@ make -C wii/tests showcase FFMPEG=/path/to/ffmpeg   # a guided tour of every scr
 ```
 
 The tests compile the **real** game code on the PC and drive it with scripted Wii Remote input: menu and tile selection,
-instructions → countdown → play → pause → restart → results → menu for all ten games; each game's scoring, timer, lives
+instructions → countdown → play → pause → restart → results → menu for all twelve games; each game's scoring, timer, lives
 and win/lose rules; a random "monkey" player for every game; the Wii Remote disconnect freeze; 16:9 drawing. Every test
 also fails on any NaN passed to a drawing call. The recorded videos use a PC software renderer (`tests/gfx_soft.c`)
 fed by those same drawing calls. **They are not output from a Wii or an emulator.**
@@ -146,10 +149,12 @@ review of the code, not a guarantee, and it has not been run on a console yet.
 
 ## Known limitations and untested features
 
-* **Not run on real hardware or in Dolphin.** Boot, video modes (480i/480p, 4:3/16:9), sound, Wii Remote pairing, IR
-  pointing, rumble, tilt steering (the sign of the roll axis in Racing may need flipping) and frame rate are all unverified.
+* **Hardware-tested only for the first ten games, and only by playing them.** Not run in Dolphin. The two newest games are
+  unverified on a console. Tilt steering (the sign of the roll axis in Racing may need flipping) and frame rate in the
+  busier games (Racing, Fist Fury) have not been measured.
 * No best-score saving (deliberate, to avoid writing to your USB drive).
-* Racing's tilt steering and Fishing's "swing to cast" depend on accelerometer behaviour I could not test.
+* Racing's tilt steering, Fishing's "swing to cast" and the gun game's "swing to reload" depend on accelerometer behaviour I could not test.
+* Fist Fury is played with the remote held upright (the +Control Pad moves, A/B attack); it is not set up for sideways play.
 * Not in USB Loader GX's game list (see above).
 * The font is DejaVu Sans Bold (Bitstream Vera licence), embedded as a 4-bit atlas (`source/font_data.c`, made by
   `tools/make_assets.py`); the icon is generated by the same script.

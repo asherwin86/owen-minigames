@@ -302,5 +302,6 @@ A native C port for the Nintendo Wii (devkitPPC + libogc), requested 2026-10-23.
   `setarch -R` for that reason. Don't chase it as a game bug.
 - **Safety stance:** the Wii app deliberately writes nothing to the console or the USB drive (no save file) and uses no
   NAND/IOS/ES/network calls. `scripts/deploy-usb.sh` only writes `apps/owen-minigames/` and moves any old copy aside.
-- **Unverified:** nothing has run on a real Wii or in Dolphin. The captured videos/screenshots come from `tests/gfx_soft.c`, a PC
+- **Verified by the owner on a real Wii (2026-10-23):** the original ten games boot and play from the Homebrew Channel. Not run in Dolphin. The captured videos/screenshots come from `tests/gfx_soft.c`, a PC
   software renderer, and are not console output.
+- **Twelve games, 4x3 menu.** `GAME_COUNT` in `wii/source/fw.h`, `games.h`/`games.c`, a `g_<name>.c`, and a `t_<name>.c` (add the name to `GAMES` in `wii/tests/Makefile`) are the places to touch for another game; tests find menu tiles through `fw_tile_center`, so don't hardcode tile positions.
