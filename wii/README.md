@@ -127,7 +127,9 @@ The drive must be **FAT32** (or FAT) with an `apps` folder, which is what the Ho
 The script refuses to run unless the build output is valid and the drive looks like a Wii drive (FAT filesystem, has
 `apps\` or `wbfs\`). It creates `apps\owen-minigames\` and copies three files; it **never formats, deletes, or touches
 `wbfs\`, USB Loader GX's settings or other apps**; an older copy of this app is moved aside as
-`owen-minigames.backup-<time>`; every file is checksummed after copying. If WSL has no `/mnt/f` it goes through
+`owen-minigames.backup-<time>` (its `boot.dol` renamed to `boot.dol.old` so the Homebrew Channel does not list it), and once the new
+copy has been checksum-verified, **older backups are removed so only the newest one is kept** (only folders named exactly
+`owen-minigames.backup-YYYYmmdd-HHMMSS` are ever considered). `--test-root <folder>` runs the script against an ordinary folder. If WSL has no `/mnt/f` it goes through
 `powershell.exe`; to mount the drive in WSL instead: `sudo mkdir -p /mnt/f && sudo mount -t drvfs F: /mnt/f`.
 
 Expected layout:
