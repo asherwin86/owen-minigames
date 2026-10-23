@@ -91,4 +91,4 @@ static void icon(float cx, float cy, float s) {
 const GameDef game_treasure = {
   "Treasure Hunt", "Hot or cold?",
   {"Five treasures are buried under the bushes.", "Move the shovel: the glow turns red when you are close.", "Press A to dig. Each dig costs 1.5 seconds!", NULL},
-  "Search: point at the screen   Dig: A", RGB(130, 200, 100), RGB(70, 140, 70), 50, 0, start, update, draw, icon, CUR_SHOVEL};
+  "Search: point at the screen   Dig: A", RGB(130, 200, 100), RGB(70, 140, 70), 50, 0, start, update, draw, icon, CUR_SHOVEL, INP_POINT | INP_A, 600, 900};

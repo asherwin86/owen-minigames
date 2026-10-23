@@ -148,4 +148,4 @@ static void icon(float cx, float cy, float s) {
 const GameDef game_bubble = {
   "Bubble Pop", "Match and pop!",
   {"Aim the cannon with the Wii Remote and press A to fire.", "Make groups of 3 or more of the same colour to pop them.", "A new row drops now and then. Don't let them reach the line!", NULL},
-  "Aim: point at the screen   Fire: A", RGB(40, 60, 130), RGB(80, 50, 150), 0, 0, start, update, draw, icon, CUR_NONE};
+  "Aim: point at the screen   Fire: A", RGB(40, 60, 130), RGB(80, 50, 150), 0, 0, start, update, draw, icon, CUR_NONE, INP_POINT | INP_A, 400, 900};

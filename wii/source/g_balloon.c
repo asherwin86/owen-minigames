@@ -77,4 +77,4 @@ static void icon(float cx, float cy, float s) { draw_balloon(cx - s * 0.18f, cy 
 const GameDef game_balloon = {
   "Balloon Pop", "Pop them all!",
   {"Point the Wii Remote at a balloon and press A to pop it.", "Pop balloons in a row to build a combo bonus.", "Bombs cost you points, so leave those alone!", NULL},
-  "Aim: point at the screen   Pop: A", RGB(70, 150, 235), RGB(150, 210, 255), 50, 0, start, update, draw, icon, CUR_CROSSHAIR};
+  "Aim: point at the screen   Pop: A", RGB(70, 150, 235), RGB(150, 210, 255), 50, 0, start, update, draw, icon, CUR_CROSSHAIR, INP_POINT | INP_A, 150, 300};

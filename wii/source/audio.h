@@ -5,5 +5,6 @@ typedef enum { SFX_CLICK, SFX_POP, SFX_HIT, SFX_MISS, SFX_GOOD, SFX_BAD, SFX_WIN
 void audio_init(void);
 void audio_sfx(Sfx s);
 void audio_music(int on);
+void audio_set_enabled(int sfx, int music);   /* the Options screen's switches */
 void audio_shutdown(void);                     /* stop the sound hardware cleanly before returning to the loader */
 #endif

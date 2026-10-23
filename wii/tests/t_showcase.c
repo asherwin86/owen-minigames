@@ -17,7 +17,11 @@ int main(void) {
   rng_seed(99); fw_init();
   wait(3.5f);                                   /* title */
   CHECK(fw_phase() == PH_TITLE, "title");
-  click();
+  glide(320, 417, 0.6f); click();                /* the Options button */
+  CHECK(fw_phase() == PH_OPTIONS, "options");
+  wait(1.5f); glide(320, 158, 0.4f); click(); wait(0.8f); glide(320, 373, 0.4f); click();
+  CHECK(fw_phase() == PH_TITLE, "back from options");
+  glide(320, 348, 0.5f); click();
   CHECK(fw_phase() == PH_MENU, "menu");
   for (int g = 0; g < GAME_COUNT; g++) { float x, y; tile_center(g, &x, &y); glide(x, y, 0.45f); wait(0.25f); }
   for (int g = 0; g < GAME_COUNT; g++) {
@@ -33,6 +37,7 @@ int main(void) {
     Input p = at(px_, py_); p.plus_down = true; tick(&p, 1.0f / 60); wait(2.0f);
     CHECK(fw_phase() == PH_PAUSE, "pause overlay");
     glide(320, 217, 0.4f); click(); CHECK(fw_phase() == PH_PLAY, "resumed");
+    R.score = 320;                              /* a good score, so the results screen shows its stars */
     run(42.5f, &(Input){.connected = true, .ir_valid = true, .x = 320, .y = 240});
     CHECK(fw_phase() == PH_RESULTS, "results"); wait(3.0f); }
   Input dc = idle(); dc.connected = false; run(2.5f, &dc);          /* the Wii Remote drops out */

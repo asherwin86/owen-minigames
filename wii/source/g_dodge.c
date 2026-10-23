@@ -102,4 +102,4 @@ static void icon(float cx, float cy, float s) {
 const GameDef game_dodge = {
   "Dodge It!", "How long can you last?",
   {"Move your spaceship to dodge rocks and red lasers.", "Collect gold stars for bonus points.", "Press A to dash: you can't be hurt while dashing.", "You have 3 hearts. Be quick!"},
-  "Move: point at the screen   Dash: A", RGB(25, 25, 70), RGB(70, 40, 110), 0, 3, start, update, draw, icon, CUR_NONE};
+  "Move: point at the screen   Dash: A", RGB(25, 25, 70), RGB(70, 40, 110), 0, 3, start, update, draw, icon, CUR_NONE, INP_POINT | INP_A | INP_DPAD, 500, 1000};

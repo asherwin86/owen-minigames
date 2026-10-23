@@ -16,6 +16,7 @@ static s16 *music_buf;
 static u32 music_bytes;
 static int next_voice = 1;
 static bool music_on = false;
+static bool sfx_enabled = true, music_enabled = true;
 
 static float osc(int wave, float phase) {
   float p = phase - floorf(phase);
@@ -98,12 +99,13 @@ void audio_init(void) {
 }
 
 void audio_sfx(Sfx s) {
-  if (s < 0 || s >= SFX_COUNT || !sfx_buf[s]) return;
+  if (!sfx_enabled || s < 0 || s >= SFX_COUNT || !sfx_buf[s]) return;
   ASND_SetVoice(next_voice, VOICE_MONO_16BIT, RATE, 0, sfx_buf[s], (s32)sfx_bytes[s], 255, 255, NULL);
   next_voice = next_voice >= 9 ? 1 : next_voice + 1;     /* voices 1-9 for effects, voice 0 is the music */
 }
 
 void audio_music(int on) {
+  if (on && !music_enabled) on = 0;
   if (on && !music_on) {
     music_on = true;
     ASND_SetVoice(0, VOICE_MONO_16BIT, RATE, 0, music_buf, (s32)music_bytes, 70, 70, music_cb);
@@ -112,5 +114,7 @@ void audio_music(int on) {
     ASND_StopVoice(0);
   }
 }
+
+void audio_set_enabled(int sfx, int music) { sfx_enabled = sfx != 0; music_enabled = music != 0; audio_music(music_enabled ? 1 : 0); }
 
 void audio_shutdown(void) { audio_music(0); ASND_End(); }

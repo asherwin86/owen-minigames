@@ -210,4 +210,4 @@ static void icon(float cx, float cy, float s) {
 const GameDef game_fight = {
   "Fist Fury", "Five fighters. One champion.",
   {"Beat five computer fighters, each tougher than the last.", "A punches, B kicks. Hold 1 to block. Up (or 2) jumps.", "Move with the +Control Pad. Combos score more!", "You recover a little health after every win."},
-  "Move: +Control Pad   Punch: A   Kick: B   Block: 1   Jump: Up / 2", RGB(80, 50, 120), RGB(160, 60, 90), 120, 0, start, update, draw, icon, CUR_NONE};
+  "Move: +Control Pad   Punch: A   Kick: B   Block: 1   Jump: Up / 2", RGB(80, 50, 120), RGB(160, 60, 90), 120, 0, start, update, draw, icon, CUR_NONE, INP_DPAD | INP_A | INP_B | INP_ONE | INP_TWO, 900, 2500};

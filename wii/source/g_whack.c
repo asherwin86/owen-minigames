@@ -83,4 +83,4 @@ static void icon(float cx, float cy, float s) {
 const GameDef game_whack = {
   "Whack-a-Mole", "Bonk the moles!",
   {"Point at a mole and press A to whack it.", "Golden moles are worth 3 times as much.", "Don't hit the grumpy grey bomb moles!", NULL},
-  "Aim: point at the screen   Whack: A", RGB(110, 190, 90), RGB(60, 130, 70), 40, 0, start, update, draw, icon, CUR_HAMMER};
+  "Aim: point at the screen   Whack: A", RGB(110, 190, 90), RGB(60, 130, 70), 40, 0, start, update, draw, icon, CUR_HAMMER, INP_POINT | INP_A, 150, 300};

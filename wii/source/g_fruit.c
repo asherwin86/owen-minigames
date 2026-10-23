@@ -95,4 +95,4 @@ static void icon(float cx, float cy, float s) {
 const GameDef game_fruit = {
   "Fruit Catcher", "Catch the yummy fruit!",
   {"Move the basket to catch the falling fruit.", "Missing a fruit, or catching a bomb, costs a heart.", "Golden stars are worth 50!", NULL},
-  "Move: point at the screen, or the +Control Pad", RGB(255, 170, 90), RGB(255, 110, 120), 0, 3, start, update, draw, icon, CUR_NONE};
+  "Move: point at the screen, or the +Control Pad", RGB(255, 170, 90), RGB(255, 110, 120), 0, 3, start, update, draw, icon, CUR_NONE, INP_POINT | INP_DPAD, 300, 700};

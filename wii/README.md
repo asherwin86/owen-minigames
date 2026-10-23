@@ -28,7 +28,9 @@ the app is one self-contained file plus a tiny `meta.xml` and `icon.png`. No int
 | 11 | **Outlaw Shootout** | point, **B** or **A** fires, **1** / swing reloads | 60 s, 3 hearts. Bandits pop up in windows and behind barrels and shoot back if you're slow (headshots 150+); townsfolk in white hats must not be shot. Six bullets. |
 | 12 | **Fist Fury** | **+Control Pad** move, **Up**/**2** jump, **A** punch, **B** kick, hold **1** block | 120 s. A fighting game against five computer fighters, each tougher; you recover 25 hp after each win. Combos score more. |
 
-Everywhere: **HOME** or **+** pauses (Resume / Restart / Menu), **B** goes back, and the Wii Remote disconnecting freezes
+Menus: point and press **A** (or use the +Control Pad). The game menu shows a 1–3 star rating per game and the highlighted game's tip; each
+game's instruction screen shows a Wii Remote picture with the buttons it uses lit up; **Options** switches music, sound effects and rumble
+(not saved). Everywhere: **HOME** or **+** pauses (Resume / Restart / Menu), **B** goes back, and the Wii Remote disconnecting freezes
 the game until it reconnects. Without the sensor bar, the **+Control Pad** moves an on-screen cursor instead.
 
 ## What you need to build it (WSL / Linux)

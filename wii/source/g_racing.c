@@ -143,4 +143,4 @@ static void icon(float cx, float cy, float s) {
 const GameDef game_racing = {
   "Racing Challenge", "Beat the clock!",
   {"Hold A (or 2) to speed up, and B (or 1) to brake.", "Steer with the +Control Pad, by tilting, or by pointing.", "Grab coins and drive through checkpoints for more time.", "Hitting a car or a cone slows you down and costs time."},
-  "Gas: A or 2   Brake: B or 1   Steer: pad / tilt / point", RGB(110, 190, 255), RGB(70, 160, 70), 40, 0, start, update, draw, icon, CUR_NONE};
+  "Gas: A or 2   Brake: B or 1   Steer: pad / tilt / point", RGB(110, 190, 255), RGB(70, 160, 70), 40, 0, start, update, draw, icon, CUR_NONE, INP_A | INP_B | INP_ONE | INP_TWO | INP_DPAD | INP_TILT, 700, 1300};

@@ -59,8 +59,10 @@ void gfx_text_center(float x, float y, float s, Color c, const char *t) { gfx_te
 void gfx_text_shadow(float x, float y, float s, Color c, const char *t) { gfx_text(x, y, s, c, t); }
 #endif
 void audio_init(void) {} void audio_music(int on) { (void)on; } void audio_shutdown(void) {}
+void audio_set_enabled(int sfx, int music) { (void)sfx; (void)music; }
 void audio_sfx(Sfx s) { (void)s; sfx_n++; }
 void input_init(float w) { (void)w; } void input_poll(Input *in) { *in = idle(); } void input_rumble(int f) { (void)f; }
+void input_set_rumble(int e) { (void)e; }
 
 int sfx_count(void) { return sfx_n; }
 

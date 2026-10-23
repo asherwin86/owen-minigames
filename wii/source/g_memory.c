@@ -103,4 +103,4 @@ static void icon(float cx, float cy, float s) {
 const GameDef game_memory = {
   "Memory Match", "Remember where they are!",
   {"Point at a card and press A to flip it over.", "Flip two cards that show the same picture to keep them.", "Find all 8 pairs before time runs out.", NULL},
-  "Pick: point at the screen   Flip: A", RGB(110, 80, 190), RGB(60, 50, 140), 75, 0, start, update, draw, icon, CUR_HAND};
+  "Pick: point at the screen   Flip: A", RGB(110, 80, 190), RGB(60, 50, 140), 75, 0, start, update, draw, icon, CUR_HAND, INP_POINT | INP_A, 900, 1300};

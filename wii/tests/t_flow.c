@@ -87,5 +87,32 @@ int main(void) {
   /* widescreen: drawing must work with a wider world */
   g_screen_w = 853.3f; begin_game(2); run(1, &(Input){.connected = true, .ir_valid = true, .x = 100, .y = 100}); g_screen_w = 640.0f;
   CHECK(fw_phase() == PH_PLAY, "16:9 drawing runs");
+  /* ---- the new menus: Options screen, corner buttons, star ratings ---- */
+  g_screen_w = 640.0f;
+  fw_init();
+  CHECK(fw_phase() == PH_TITLE, "title");
+  Input o = press_a_at(320, 417); tick(&o, 0.016f);                  /* the Options button on the title screen */
+  CHECK(fw_phase() == PH_OPTIONS, "Options opens from the title (phase %d)", (int)fw_phase());
+  bool m, sfx, rum; fw_options(&m, &sfx, &rum);
+  CHECK(m && sfx && rum, "everything starts ON");
+  o = press_a_at(320, 158); tick(&o, 0.016f); fw_options(&m, &sfx, &rum); CHECK(!m && sfx && rum, "the Music row switches music off");
+  o = press_a_at(320, 226); tick(&o, 0.016f); fw_options(&m, &sfx, &rum); CHECK(!m && !sfx && rum, "the Sound row switches effects off");
+  o = press_a_at(320, 294); tick(&o, 0.016f); fw_options(&m, &sfx, &rum); CHECK(!m && !sfx && !rum, "the Rumble row switches rumble off");
+  o = press_a_at(320, 158); tick(&o, 0.016f); fw_options(&m, &sfx, &rum); CHECK(m && !sfx && !rum, "switches toggle back on");
+  o = press_a_at(320, 373); tick(&o, 0.016f); CHECK(fw_phase() == PH_TITLE, "Back returns to the title");
+  o = press_a_at(320, 348); tick(&o, 0.016f); CHECK(fw_phase() == PH_MENU, "the Play button opens the menu");
+  o = press_a_at(580, 28); tick(&o, 0.016f); CHECK(fw_phase() == PH_OPTIONS, "the corner Options button works");
+  o = idle(); o.b_down = true; tick(&o, 0.016f); CHECK(fw_phase() == PH_MENU, "B leaves Options for the menu it came from");
+  o = press_a_at(62, 28); tick(&o, 0.016f); CHECK(fw_phase() == PH_TITLE, "the corner Back button returns to the title");
+  for (int g = 0; g < GAME_COUNT; g++) {
+    const GameDef *d = GAME_LIST[g];
+    CHECK(d->star2 > 0 && d->star3 > d->star2, "game %d has increasing star thresholds (%d, %d)", g, d->star2, d->star3);
+    CHECK(d->inputs != 0, "game %d lists the buttons it uses", g);
+    CHECK(fw_stars_for(g, 0) == 0 && fw_stars_for(g, 1) == 1 && fw_stars_for(g, d->star2) == 2 && fw_stars_for(g, d->star3) == 3, "star ratings for game %d", g);
+  }
+  /* a finished round shows its stars; finishing with a good score is a new best */
+  begin_game(0); R.score = GAME_LIST[0]->star3; fw_finish(true, "A very long headline that has to be squeezed to fit"); 
+  CHECK(fw_phase() == PH_RESULTS && fw_new_best() && fw_best(0) == GAME_LIST[0]->star3, "a high score is a new best");
+  run(3, &(Input){.connected = true});                              /* results animate (count-up, stars, confetti) without trouble */
   return finish_test("flow");
 }

@@ -111,4 +111,4 @@ static void icon(float cx, float cy, float s) {
 const GameDef game_fishing = {
   "Fishing Frenzy", "What will you catch?",
   {"Move the boat, then press A (or swing the remote) to drop the hook.", "Hook a fish, then wind it in. Hold A to reel faster.", "Deep fish and golden fish score big. Old boots cost points!", NULL},
-  "Move: point at the screen   Hook: A", RGB(120, 200, 245), RGB(40, 120, 190), 60, 0, start, update, draw, icon, CUR_NONE};
+  "Move: point at the screen   Hook: A", RGB(120, 200, 245), RGB(40, 120, 190), 60, 0, start, update, draw, icon, CUR_NONE, INP_POINT | INP_A | INP_SWING, 300, 600};

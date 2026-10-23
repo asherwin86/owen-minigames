@@ -9,6 +9,7 @@ static float screen_w = WORLD_W;
 static float cursor_x = WORLD_W / 2, cursor_y = WORLD_H / 2;      /* d-pad cursor, used when the remote cannot see the sensor bar */
 static float smooth_x = -1, smooth_y = -1;
 static int rumble_left = 0;
+static bool rumble_enabled = true;
 static u64 last_tick = 0, last_flick = 0;
 
 void input_init(float sw) {
@@ -19,7 +20,8 @@ void input_init(float sw) {
   last_tick = gettime();
 }
 
-void input_rumble(int frames) { rumble_left = frames; }
+void input_rumble(int frames) { if (rumble_enabled) rumble_left = frames; }
+void input_set_rumble(int enabled) { rumble_enabled = enabled != 0; if (!rumble_enabled) rumble_left = 0; }
 
 void input_poll(Input *in) {
   memset(in, 0, sizeof(*in));

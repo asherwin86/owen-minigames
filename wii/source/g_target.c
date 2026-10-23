@@ -93,4 +93,4 @@ static void icon(float cx, float cy, float s) {
 const GameDef game_target = {
   "Target Practice", "Straight to the bullseye!",
   {"Aim the Wii Remote at a target and press A to fire.", "Hit near the middle and be quick for more points.", "If a target runs out of time you lose a heart.", NULL},
-  "Aim: point at the screen   Fire: A", RGB(60, 130, 90), RGB(30, 80, 60), 45, 3, start, update, draw, icon, CUR_CROSSHAIR};
+  "Aim: point at the screen   Fire: A", RGB(60, 130, 90), RGB(30, 80, 60), 45, 3, start, update, draw, icon, CUR_CROSSHAIR, INP_POINT | INP_A, 600, 1200};

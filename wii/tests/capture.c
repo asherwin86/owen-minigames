@@ -16,7 +16,7 @@ static int last_phase = -1, last_game = -1, shots = 0;
 static int step = 2, max_frames = 2400;
 static const char *name = "test", *dir = "captures";
 static uint8_t buf[1024 * 480 * 3];
-static const char *PHASE[] = {"title", "menu", "instructions", "countdown", "playing", "paused", "results"};
+static const char *PHASE[] = {"title", "menu", "instructions", "countdown", "playing", "paused", "results", "options"};
 
 static void open_pipe(void) {
   const char *ff = getenv("FFMPEG"); if (!ff) ff = "ffmpeg";

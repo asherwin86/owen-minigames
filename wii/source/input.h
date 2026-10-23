@@ -4,4 +4,5 @@
 void input_init(float screen_w);               /* Wii Remote setup; screen_w = logical screen width for pointer mapping */
 void input_poll(Input *in);                    /* call once per frame */
 void input_rumble(int frames);                 /* short rumble pulse */
+void input_set_rumble(int enabled);            /* the Options screen's switch */
 #endif

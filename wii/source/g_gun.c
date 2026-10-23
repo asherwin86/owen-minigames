@@ -138,4 +138,4 @@ static void icon(float cx, float cy, float s) {
 const GameDef game_gun = {
   "Outlaw Shootout", "Be the fastest gun in town!",
   {"Bandits pop up in the windows and behind the barrels.", "Shoot them before they shoot you! Headshots score extra.", "Don't shoot the townsfolk in white hats.", "Six bullets: press 1 or swing the remote to reload."},
-  "Aim: point at the screen   Fire: B or A   Reload: 1", RGB(255, 170, 90), RGB(190, 100, 60), 60, 3, start, update, draw, icon, CUR_CROSSHAIR};
+  "Aim: point at the screen   Fire: B or A   Reload: 1", RGB(255, 170, 90), RGB(190, 100, 60), 60, 3, start, update, draw, icon, CUR_CROSSHAIR, INP_POINT | INP_A | INP_B | INP_ONE | INP_SWING, 600, 1200};
