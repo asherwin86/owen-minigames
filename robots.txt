@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://mimi-games-bvpj.onrender.com/sitemap.xml
+Sitemap: https://mimi-games-lg9l.onrender.com/sitemap.xml

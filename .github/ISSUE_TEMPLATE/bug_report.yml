@@ -35,7 +35,7 @@ body:
     attributes:
       label: Where were you playing?
       options:
-        - The hosted site (mimi-games-bvpj.onrender.com)
+        - The hosted site (mimi-games-lg9l.onrender.com)
         - Desktop app (Windows / macOS / Linux)
         - Android phone or tablet
         - Android TV

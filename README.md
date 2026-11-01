@@ -4,7 +4,7 @@ A hub of **86 mini-games and 4 small utility apps**, playable solo, in local
 split-screen, or over the internet with friends — in a browser, as a desktop
 app, on Android and Android TV, or in a Quest headset.
 
-**Play it: <https://mimi-games-bvpj.onrender.com>**
+**Play it: <https://mimi-games-lg9l.onrender.com>**
 
 No build step, no bundler, no framework, no transpiler. The front end is plain
 HTML, CSS and JavaScript loaded with `<script>` tags and shipped exactly as

@@ -2232,7 +2232,7 @@ async function handleFetchPageApi(req, res) {
  * first, which a client can forge). The worst a forged registration can do is
  * show a banner to visitors behind the forger's own router. */
 const HOST_MODE = process.env.MIMI_HOST_MODE === "1";
-const RENDEZVOUS_URL = (process.env.MIMI_RENDEZVOUS_URL || "https://mimi-games-bvpj.onrender.com").replace(/\/+$/, "");
+const RENDEZVOUS_URL = (process.env.MIMI_RENDEZVOUS_URL || "https://mimi-games-lg9l.onrender.com").replace(/\/+$/, "");
 const HOST_STATE_PATH = path.join(process.env.MIMI_DATA_DIR || ROOT, "data", "host-announce.json");
 const HOST_HEARTBEAT_MS = 60_000;
 const HOST_TTL_MS = 3 * HOST_HEARTBEAT_MS;
