@@ -308,3 +308,26 @@ A native C port for the Nintendo Wii (devkitPPC + libogc), requested 2026-10-23.
 - **Verified by the owner on a real Wii (2026-10-23):** the original ten games boot and play from the Homebrew Channel. Not run in Dolphin. The captured videos/screenshots come from `tests/gfx_soft.c`, a PC
   software renderer, and are not console output.
 - **Twelve games, 4x3 menu.** `GAME_COUNT` in `wii/source/fw.h`, `games.h`/`games.c`, a `g_<name>.c`, and a `t_<name>.c` (add the name to `GAMES` in `wii/tests/Makefile`) are the places to touch for another game; tests find menu tiles through `fw_tile_center`, so don't hardcode tile positions. A new game also needs `inputs` (INP_* flags, drawn on the instruction screen's remote picture) and `star2`/`star3` score thresholds in its `GameDef`; `t_flow` checks both.
+
+## 11. Docker image
+
+`Dockerfile`, `.dockerignore` and `docker-compose.yml` run the hub as a container (written 2026-11-13; usage is in the README's
+"Running with Docker"). Things that will bite:
+
+- **The Dockerfile copies an explicit list**, not the repo. A new top-level file or folder the server has to serve must be added in
+  two places: `SERVABLE`/`SERVABLE_FILES` in `server.js` *and* a `COPY` line in the Dockerfile, or it works from a checkout and 404s in
+  the container.
+- **`.dockerignore` is what keeps the image at ~15 MB** (this repo has gigabytes of Electron builds, the Wii port and a Unity export) and
+  keeps `data/`, `certs/` and signing keys out. Its patterns match from the repo root only.
+- **One volume, `MIMI_DATA_DIR=/var/lib/mimi`;** the server writes `<that>/data/*.json` and creates the folder itself.
+- **tini is PID 1** because Node there ignores `SIGTERM`; the server has no signal handler of its own (writes are synchronous per change,
+  so a hard stop loses nothing).
+- **Published by CI, not by hand:** `.github/workflows/docker.yml` builds amd64 + arm64, runs a smoke test against the real image
+  (healthy, served and blocked paths, account written to the volume as the unprivileged user and surviving a container replacement), and
+  only then pushes to `ghcr.io/asherwin86/owen-minigames` (`latest` from `main`, `X.Y.Z` from `v*` tags, `sha-…`). Its `paths:` filter
+  lists the files that end up in the image: keep it in step with the Dockerfile's `COPY` lines. `docker-compose.ghcr.yml` pulls it.
+- **Verification status:** there was no Docker daemon on the dev box (no sudo, rootless Docker needs `newuidmap`), so the image itself
+  was never built. What was checked instead: the exact file set the `COPY` lines produce, a clean `npm ci --omit=dev`, running
+  `node server.js` from that tree with the container's environment (served and blocked paths, the healthcheck command, WebSocket,
+  account creation surviving a restart, clean `SIGTERM`), and that the compose file parses. Build it before trusting it.
+

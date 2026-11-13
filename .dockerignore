@@ -1,0 +1,37 @@
+# Everything not listed in the Dockerfile's COPY lines is irrelevant to the container, but ignoring it keeps the build
+# context small (this repo holds gigabytes of Electron builds and a Unity export) and keeps secrets out of it.
+
+# Version control and tooling
+.git
+.github
+.gitignore
+.vscode
+.claude
+.DS_Store
+Thumbs.db
+
+# Never in an image: real accounts, certificates, signing keys, local builds
+data
+certs
+android-signing
+downloads
+dist-electron
+dist-electron-vrsim
+node_modules
+*.log
+npm-debug.log*
+
+# Other products in this repo, and the desktop wrapper
+wii
+electron
+games/kart-circuit-unity
+
+# Deployment descriptors and docs (the README is not served by the app)
+Dockerfile
+docker-compose*.yml
+.dockerignore
+render.yaml
+*.md
+
+# Stray files
+homeanthonyowenremote-desktop

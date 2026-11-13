@@ -1,0 +1,141 @@
+# Builds the Docker image, smoke-tests it, and publishes it to GitHub's container registry (ghcr.io) so a home lab can just pull it:
+#
+#   docker pull ghcr.io/asherwin86/owen-minigames:latest
+#
+# Runs when the server or the files it serves change on main, when a v* release tag is pushed (-> :1.0.66 style tags), by hand
+# from the Actions tab, and on pull requests that touch the Docker files (build and test only, nothing is pushed).
+# This repo is public, so the runners and the public package are free.
+name: Docker image
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - package.json
+      - package-lock.json
+      - server.js
+      - index.html
+      - sw.js
+      - manifest.webmanifest
+      - robots.txt
+      - LICENSE
+      - '.well-known/**'
+      - 'icons/**'
+      - 'css/**'
+      - 'js/**'
+      - 'games/**'
+      - .github/workflows/docker.yml
+  pull_request:
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - package.json
+      - package-lock.json
+      - .github/workflows/docker.yml
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write          # GITHUB_TOKEN may push to ghcr.io for this repository
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3      # lets the amd64 runner also build the arm64 image (Raspberry Pi and friends)
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Image name and tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=sha,format=short
+          labels: |
+            org.opencontainers.image.title=51 Mimi Games
+            org.opencontainers.image.licenses=ISC
+
+      # Build the amd64 image into the local Docker engine first and test the real thing: does it start, report healthy, serve the
+      # site, refuse to serve source files, and can the unprivileged user write accounts into the volume?
+      - name: Build (amd64, for the smoke test)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: mimi-smoke:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          docker volume create mimi-smoke-data >/dev/null
+          docker run -d --name mimi-smoke -p 18764:1764 -v mimi-smoke-data:/var/lib/mimi mimi-smoke:test
+
+          echo "waiting for the container to report healthy..."
+          for i in $(seq 1 40); do
+            status=$(docker inspect -f '{{.State.Health.Status}}' mimi-smoke)
+            [ "$status" = healthy ] && break
+            [ "$status" = unhealthy ] && break
+            sleep 2
+          done
+          echo "health: $status"
+          [ "$status" = healthy ] || { docker logs mimi-smoke; exit 1; }
+
+          code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
+          [ "$(code http://127.0.0.1:18764/)" = 200 ]                           || { echo "/ is not served"; exit 1; }
+          [ "$(code http://127.0.0.1:18764/js/app.js)" = 200 ]                  || { echo "/js/app.js is not served"; exit 1; }
+          [ "$(code http://127.0.0.1:18764/games/mario-kart/index.html)" = 200 ] || { echo "Kart Circuit is not served"; exit 1; }
+          [ "$(code http://127.0.0.1:18764/sitemap.xml)" = 200 ]                || { echo "the sitemap is not served"; exit 1; }
+          for p in /server.js /package.json /data/profiles.json //data/profiles.json /node_modules/ws/package.json; do
+            [ "$(code --path-as-is "http://127.0.0.1:18764$p")" = 404 ] || { echo "$p must not be served"; exit 1; }
+          done
+
+          # accounts must reach the volume as the unprivileged user, and survive the container being replaced
+          curl -fsS -XPOST http://127.0.0.1:18764/api/profiles/create -H 'Content-Type: application/json' \
+               -d '{"key":"smoketest","name":"Smoke Test","passwordHash":"x"}' | grep -q '"ok":true'
+          docker exec mimi-smoke sh -c 'id -un; test -s /var/lib/mimi/data/profiles.json'
+          docker rm -f mimi-smoke >/dev/null
+          docker run -d --name mimi-smoke2 -p 18765:1764 -v mimi-smoke-data:/var/lib/mimi mimi-smoke:test
+          for i in $(seq 1 20); do [ "$(code http://127.0.0.1:18765/)" = 200 ] && break; sleep 1; done
+          curl -fsS -XPOST http://127.0.0.1:18765/api/profiles/login -H 'Content-Type: application/json' \
+               -d '{"key":"smoketest","passwordHash":"x"}' | grep -q '"ok":true'
+          echo "smoke test passed"
+
+      - name: Log in to ghcr.io
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Only reached when the smoke test passed. The amd64 layers come from the cache; arm64 is built here under QEMU.
+      - name: Publish (amd64 + arm64)
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

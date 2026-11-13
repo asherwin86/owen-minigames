@@ -1,0 +1,31 @@
+# Run 51 Mimi Games on a home lab:   docker compose up -d --build        then open http://<host>:1764
+#
+# Settings can go in a ".env" file next to this one (compose reads it automatically), for example:
+#   MIMI_PORT=8080                    host port to publish (default 1764)
+#   RESEND_API_KEY=re_...             optional: email notifications / recovery codes
+#   EMAIL_FROM="Mimi Games <games@example.com>"
+#   UPSTASH_REDIS_REST_URL=... UPSTASH_REDIS_REST_TOKEN=...   optional: mirror data to Redis (a local volume is enough at home)
+services:
+  mimi-games:
+    build: .
+    image: owen-minigames:latest
+    container_name: mimi-games
+    restart: unless-stopped
+    ports:
+      - "${MIMI_PORT:-1764}:1764"
+    volumes:
+      # Accounts, leaderboards, cakes, messages: the one thing to back up. Lives at /var/lib/mimi/data/*.json in the container.
+      - mimi-data:/var/lib/mimi
+    environment:
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      UPSTASH_REDIS_REST_URL: ${UPSTASH_REDIS_REST_URL:-}
+      UPSTASH_REDIS_REST_TOKEN: ${UPSTASH_REDIS_REST_TOKEN:-}
+    # The server needs no privileges: it writes only to the volume and listens on a high port.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  mimi-data:

@@ -174,3 +174,71 @@ make -C wii/tests test                        # automated tests of the game logi
 
 Launch it from the Homebrew Channel. Verified working on a real Wii by the owner (2026-10-23) before the last two games were added; not run in Dolphin. Toolchain setup, controls, troubleshooting
 and the limits (it is not in USB Loader GX's game list) are in [`wii/README.md`](wii/README.md).
+
+## Running with Docker (home lab)
+
+The whole hub (pages, API, accounts, multiplayer relay) is one Node process, so the image is small and has one volume.
+
+```bash
+docker compose up -d --build        # then open http://<your-server>:1764
+```
+
+Without compose:
+
+```bash
+docker build -t owen-minigames .
+docker run -d --name mimi-games --restart unless-stopped -p 1764:1764 -v mimi-data:/var/lib/mimi owen-minigames
+```
+
+`docker ps` shows `healthy` once it is serving. Update with `git pull && docker compose up -d --build`.
+
+**Or pull the prebuilt image.** A GitHub Actions workflow (`.github/workflows/docker.yml`) builds the image for amd64 and arm64, smoke-tests
+it and publishes it to GitHub's container registry whenever the server or the served files change on `main` (and on release tags):
+
+```bash
+docker compose -f docker-compose.ghcr.yml up -d        # runs ghcr.io/asherwin86/owen-minigames:latest, no build needed
+docker compose -f docker-compose.ghcr.yml pull && docker compose -f docker-compose.ghcr.yml up -d    # update later
+```
+
+Pin a version with `MIMI_TAG=1.0.66` (release tags) or a commit tag such as `MIMI_TAG=sha-abc1234`. If the pull is refused, the package
+is still private: GitHub profile → Packages → `owen-minigames` → Package settings → Change visibility → Public (once).
+
+**Your data.** Accounts, leaderboards, cakes and messages live in the `mimi-data` volume, as JSON files under `/var/lib/mimi/data/`.
+That volume is the only thing to back up:
+
+```bash
+docker run --rm -v mimi-data:/d -v "$PWD":/b alpine tar czf /b/mimi-data-$(date +%F).tgz -C /d .      # back up
+docker run --rm -v mimi-data:/d -v "$PWD":/b alpine tar xzf /b/mimi-data-YYYY-MM-DD.tgz -C /d         # restore
+```
+
+If you use a bind mount instead of a named volume, the container runs as the unprivileged `node` user (uid 1000), so
+`chown -R 1000:1000 <folder>` first. Accounts on your server are separate from the ones on the Render site.
+
+**HTTPS and a real hostname.** The container speaks plain HTTP. Passkeys, voice chat and camera/microphone games only work over
+HTTPS, and passkeys also need a hostname rather than an IP address, so put a reverse proxy in front. With Caddy:
+
+```text
+mimi.example.home {
+    reverse_proxy 127.0.0.1:1764
+}
+```
+
+Any proxy works if it forwards WebSocket upgrades on `/mp` (nginx needs `proxy_http_version 1.1` and the `Upgrade` and `Connection`
+headers; Caddy and Traefik do this by themselves). When the proxy runs on the same machine, publish the port only to it with
+`ports: ["127.0.0.1:1764:1764"]`.
+
+**Keep it on your LAN or VPN.** The multiplayer relay has no login and the per-address rate limits trust the first
+`X-Forwarded-For` entry, so don't expose it directly to the internet (see "Still open" in `CLAUDE.md`). Don't mount TLS
+certificates into `/app/certs` either: that makes the server open a second plain-HTTP port that serves everything.
+
+| Setting (env var or `.env` next to `docker-compose.yml`) | Meaning |
+|---|---|
+| `MIMI_PORT` | Host port to publish (default `1764`) |
+| `RESEND_API_KEY`, `EMAIL_FROM` | Optional: email notifications and recovery codes |
+| `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Optional: mirror the data to Redis (not needed at home) |
+
+Raspberry Pi or another ARM box: `docker buildx build --platform linux/arm64 -t owen-minigames --load .` (or `linux/amd64,linux/arm64` with
+`--push` to a registry). The Download App buttons look up the newest GitHub release from inside the container, so they need outbound
+internet; without it the page falls back to its built-in links. The desktop app, the Wii port and the Unity export are not in the image
+(`.dockerignore`).
+

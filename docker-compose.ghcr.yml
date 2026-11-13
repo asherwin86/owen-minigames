@@ -1,0 +1,24 @@
+# Run the prebuilt image from GitHub instead of building it:   docker compose -f docker-compose.ghcr.yml up -d
+# Update with:                                                  docker compose -f docker-compose.ghcr.yml pull && docker compose -f docker-compose.ghcr.yml up -d
+# (Same settings and volume as docker-compose.yml; see the comments there.)
+services:
+  mimi-games:
+    image: ghcr.io/asherwin86/owen-minigames:${MIMI_TAG:-latest}
+    container_name: mimi-games
+    restart: unless-stopped
+    ports:
+      - "${MIMI_PORT:-1764}:1764"
+    volumes:
+      - mimi-data:/var/lib/mimi
+    environment:
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      UPSTASH_REDIS_REST_URL: ${UPSTASH_REDIS_REST_URL:-}
+      UPSTASH_REDIS_REST_TOKEN: ${UPSTASH_REDIS_REST_TOKEN:-}
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  mimi-data:
