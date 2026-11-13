@@ -159,6 +159,37 @@ multiplayer room lifecycle.
 
 ISC. Made for fun, and not affiliated with Nintendo.
 
+## Ads
+
+Ads are **off by default**: a checkout, the desktop app and the Docker image show none until the server is told otherwise, and nothing
+is added to the page or requested from an ad network. They are configured with environment variables, so one image serves any site.
+This is a children's site, so the design is deliberately cautious:
+
+- **Consent first.** The visitor sees a short notice ("Show ads" / "No thanks", with a link to `/privacy.html`). Nothing is loaded from the
+  ad network until they accept, and "Ad choices" under the banner takes the choice back.
+- **Child-directed and non-personalised by default** (`MIMI_ADS_CHILD_DIRECTED=0` turns it off; don't, on a kids' site).
+- **No ads during play.** A banner sits under the game grid, a video ad can appear after a game is *closed* (every Nth close, never
+  closer together than a minimum gap), and the keys panel has an optional "Watch a short video: +N keys" button.
+  Rewarded videos are capped per day.
+
+| Setting | Meaning |
+|---|---|
+| `MIMI_ADS_PROVIDER` | `off` (default), `adsense`, or `demo` (clearly labelled fake ads, for trying the flow without an account) |
+| `MIMI_ADSENSE_CLIENT` | Your publisher id, `ca-pub-…`. Required for `adsense`; also what `/ads.txt` is generated from |
+| `MIMI_ADSENSE_BANNER_SLOT` | Optional ad unit id for the banner. Without it only the video ads run |
+| `MIMI_ADS_TEST` | `1` asks for test ads (safe to click while setting up) |
+| `MIMI_ADS_EVERY` / `MIMI_ADS_MIN_SECONDS` | Between-games video after every Nth closed game (default 3) and at least this many seconds apart (default 180) |
+| `MIMI_ADS_REWARD_KEYS` / `MIMI_ADS_REWARD_DAILY_MAX` | Keys for a rewarded video (default 5) and videos per person per day (default 5) |
+
+`demo` first, to see it working: `MIMI_ADS_PROVIDER=demo node server.js`.
+
+**What you still have to do for real ads.** The `adsense` provider uses Google AdSense for the banner and Google's H5 Games Ads
+(`adBreak`) for the videos. It was written from Google's documented API and driven against a faked ad network, **not** against live AdSense:
+you need an approved AdSense account (and AdSense for Games / H5 access for the video formats), `ads.txt` is served for you at `/ads.txt`,
+and visitors in the EEA, UK and Switzerland need a Google-certified consent platform on top of the notice here, which this repo does not
+include. Advertising to children carries legal obligations (COPPA in the US, the UK Children's Code, the GDPR's rules for children's data):
+have `privacy.html` reviewed for your site and jurisdiction before you switch real ads on.
+
 ## Nintendo Wii edition
 
 `wii/` holds a native Wii homebrew port: twelve Wii Remote minigames in one `boot.dol`, built with devkitPPC and libogc
@@ -236,6 +267,25 @@ certificates into `/app/certs` either: that makes the server open a second plain
 | `MIMI_PORT` | Host port to publish (default `1764`) |
 | `RESEND_API_KEY`, `EMAIL_FROM` | Optional: email notifications and recovery codes |
 | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Optional: mirror the data to Redis (not needed at home) |
+| `MIMI_ADS_*`, `MIMI_ADSENSE_*` | Optional: ads, **off by default**. See "Ads" below |
+
+**Using your own domain.** TLS and the domain belong to whatever reverse proxy your lab already runs (Caddy, Traefik, Nginx Proxy Manager,
+a Cloudflare tunnel, ...), so none of that is in this repo. Point the proxy at the container's port 1764 and make sure it:
+
+- terminates HTTPS and forwards to `http://<container-or-host>:1764`,
+- passes WebSocket upgrades on `/mp` (the multiplayer relay),
+- keeps the original `Host` header (passkeys are tied to the hostname),
+- sets `X-Forwarded-For` to the real client address, replacing any value the client sent (Caddy and Traefik do; with nginx use
+  `proxy_set_header X-Forwarded-For $remote_addr;`).
+
+Accounts and passkeys are per address: someone who signed up on the Render site has no account on yours, and a passkey made on one name
+doesn't work on the other. The page still declares the Render address as its canonical URL (`index.html`, `robots.txt`); change those
+if your name should be the main one.
+
+**Publishing to the internet is a bigger step than running it at home.** The known weak spots in `CLAUDE.md` ("Still open") become
+reachable by strangers: the multiplayer relay has no login or size limits, the login rate limit can be sidestepped by forging a
+forwarded-address header unless the proxy in front overwrites it, and room data from one player is rendered as HTML in the other
+players' pages. Use it with people you trust until those are fixed.
 
 Raspberry Pi or another ARM box: `docker buildx build --platform linux/arm64 -t owen-minigames --load .` (or `linux/amd64,linux/arm64` with
 `--push` to a registry). The Download App buttons look up the newest GitHub release from inside the container, so they need outbound

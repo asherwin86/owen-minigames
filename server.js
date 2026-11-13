@@ -205,7 +205,7 @@ function resolvePrettyPath(urlPath) {
  * one of these roots. Adding a folder to the project no longer silently
  * publishes it. */
 const SERVABLE = new Set(["css", "js", "games", "icons", "downloads", ".well-known"]);
-const SERVABLE_FILES = new Set(["index.html", "sw.js", "manifest.webmanifest", "favicon.ico", "robots.txt"]);
+const SERVABLE_FILES = new Set(["index.html", "sw.js", "manifest.webmanifest", "favicon.ico", "robots.txt", "privacy.html"]);
 
 function isServable(filePath) {
   // Containment first: startsWith(ROOT) alone would accept a sibling directory
@@ -874,11 +874,21 @@ function takePendingChallenge(key, kind) {
 // ceremony; that's the browser enforcing the spec, not something this
 // server can work around, so registering a passkey only works from a
 // device that reaches this hub by hostname rather than by IP.
+/* The scheme the *browser* used to reach this hub. Behind a TLS-terminating proxy (Render, a home-lab Caddy/Traefik/nginx, a tunnel)
+ * this server only ever sees plain http, but the page's origin is https://host, and WebAuthn checks that origin exactly: guessing
+ * "http" there made every passkey registration and sign-in fail with an origin mismatch on any HTTPS deployment. The proxy tells us
+ * the truth in X-Forwarded-Proto. A client can send that header too, but all it can do with it is make *its own* passkey check
+ * expect the wrong origin, so there is nothing to gain by forging it. */
+function requestProto(req) {
+  if (hasCert) return "https";
+  const forwarded = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim().toLowerCase();
+  return forwarded === "https" || forwarded === "http" ? forwarded : "http";
+}
+
 function rpInfoFromRequest(req) {
   const hostHeader = req.headers.host || "localhost";
   const hostname = hostHeader.split(":")[0];
-  const proto = hasCert ? "https" : "http";
-  return { rpID: hostname, rpName: "51 Mimi Games", origin: `${proto}://${hostHeader}` };
+  return { rpID: hostname, rpName: "51 Mimi Games", origin: `${requestProto(req)}://${hostHeader}` };
 }
 
 function generateRecoveryCode() {
@@ -2185,7 +2195,7 @@ async function handleFetchPageApi(req, res) {
   try {
     const result = await fetchPagePrivately(withScheme);
     const hostHeader = req.headers.host || "localhost";
-    const hubOrigin = `${hasCert ? "https" : "http"}://${hostHeader}`;
+    const hubOrigin = `${requestProto(req)}://${hostHeader}`;
     sendJson(res, 200, {
       ok: true,
       url: result.finalUrl,
@@ -2459,6 +2469,53 @@ async function handleHostApi(req, res, action) {
   sendJson(res, 404, { ok: false, msg: "Not found." });
 }
 
+/* Ads.
+ *
+ * Off unless MIMI_ADS_PROVIDER says otherwise, so a checkout, the desktop app and the Docker image behave exactly as before until
+ * someone opts in. The settings live here (environment variables) rather than in the page so one image can serve any site: the page asks
+ * GET /api/ads-config and does nothing if the answer is "off". Everything in the answer is public by nature (an AdSense publisher id is
+ * visible in any page that shows its ads), and every value is validated here because the page trusts it.
+ *
+ *   MIMI_ADS_PROVIDER          off (default) | adsense | demo   (demo = clearly labelled fake ads, for trying and testing the flow)
+ *   MIMI_ADSENSE_CLIENT        ca-pub-1234567890123456          the AdSense publisher id (also used to serve /ads.txt)
+ *   MIMI_ADSENSE_BANNER_SLOT   1234567890                       optional: the ad unit for the banner under the game grid
+ *   MIMI_ADS_CHILD_DIRECTED    1 (default) | 0                  child-directed treatment and non-personalised ads. This is a kids' site.
+ *   MIMI_ADS_TEST              1                                ask AdSense for test ads (safe to click while building)
+ *   MIMI_ADS_EVERY             3                                a between-games video ad after every Nth game you close...
+ *   MIMI_ADS_MIN_SECONDS       180                              ...but never closer together than this
+ *   MIMI_ADS_REWARD_KEYS       5                                keys for watching a rewarded video
+ *   MIMI_ADS_REWARD_DAILY_MAX  5                                rewarded videos per person per day
+ */
+function adsIntEnv(name, fallback, min, max) {
+  const n = Number.parseInt(process.env[name] || "", 10);
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
+}
+const ADS_CONFIG = (() => {
+  let provider = String(process.env.MIMI_ADS_PROVIDER || "off").trim().toLowerCase();
+  if (provider !== "adsense" && provider !== "demo") provider = "off";
+  const clientRaw = String(process.env.MIMI_ADSENSE_CLIENT || "").trim();
+  const client = /^ca-pub-\d{10,20}$/.test(clientRaw) ? clientRaw : "";
+  const slotRaw = String(process.env.MIMI_ADSENSE_BANNER_SLOT || "").trim();
+  const bannerSlot = /^\d{5,20}$/.test(slotRaw) ? slotRaw : "";
+  if (provider === "adsense" && !client) {
+    console.warn("MIMI_ADS_PROVIDER=adsense needs a valid MIMI_ADSENSE_CLIENT (ca-pub-...): ads stay off.");
+    provider = "off";
+  }
+  const cfg = {
+    provider,
+    client: provider === "adsense" ? client : "",
+    bannerSlot: provider === "adsense" ? bannerSlot : "",
+    childDirected: process.env.MIMI_ADS_CHILD_DIRECTED !== "0",
+    test: process.env.MIMI_ADS_TEST === "1",
+    every: adsIntEnv("MIMI_ADS_EVERY", 3, 1, 50),
+    minSeconds: adsIntEnv("MIMI_ADS_MIN_SECONDS", 180, 1, 3600),
+    rewardKeys: adsIntEnv("MIMI_ADS_REWARD_KEYS", 5, 1, 100),
+    rewardDailyMax: adsIntEnv("MIMI_ADS_REWARD_DAILY_MAX", 5, 1, 50),
+  };
+  if (provider !== "off") console.log(`Ads: ${provider}${cfg.test ? " (test mode)" : ""}, child-directed treatment ${cfg.childDirected ? "ON" : "OFF"}.`);
+  return cfg;
+})();
+
 function requestHandler(req, res) {
   if (lanBlocked(req)) {
     res.writeHead(503, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
@@ -2527,6 +2584,17 @@ function requestHandler(req, res) {
     });
     return;
   }
+  if (urlPath === "/api/ads-config") {
+    if (req.method !== "GET") { sendJson(res, 405, { ok: false, msg: "Method not allowed." }); return; }
+    sendJson(res, 200, { ok: true, ...ADS_CONFIG });
+    return;
+  }
+  // AdSense refuses to serve to a site that does not publish this file at its root; it only exists when ads are configured for AdSense.
+  if (urlPath === "/ads.txt" && ADS_CONFIG.provider === "adsense") {
+    res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+    res.end(`google.com, ${ADS_CONFIG.client.replace(/^ca-/, "")}, DIRECT, f08c47fec0942fa0\n`);
+    return;
+  }
   if (urlPath === "/api/latest-release") {
     handleLatestReleaseApi(req, res).catch(() => {
       sendJson(res, 500, { ok: false, msg: "Server error." });
@@ -2540,7 +2608,7 @@ function requestHandler(req, res) {
     return;
   }
   if (urlPath === "/sitemap.xml") {
-    const origin = `${hasCert ? "https" : "http"}://${req.headers.host || "localhost"}`;
+    const origin = `${requestProto(req)}://${req.headers.host || "localhost"}`;
     res.writeHead(200, { "Content-Type": "application/xml; charset=utf-8" });
     res.end(buildSitemapXml(origin));
     return;

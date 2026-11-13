@@ -1,0 +1,106 @@
+/* Styles for js/ads.js: the banner under the game grid, the consent notice, the demo video ad and the "watch a video" button.
+ * Everything here is inert unless ads are switched on (nothing is added to the page otherwise). */
+
+.ad-banner {
+  max-width: 760px;
+  margin: 28px auto 12px;
+  padding: 6px 10px 4px;
+  text-align: center;
+  position: relative;
+}
+.ad-banner::before {
+  content: "Advertisement";
+  display: block;
+  margin-bottom: 4px;
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  opacity: .6;
+}
+.ad-banner .adsbygoogle { min-height: 50px; }
+.ad-demo-banner {
+  min-height: 90px;
+  display: grid;
+  place-items: center;
+  padding: 10px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  background: repeating-linear-gradient(45deg, rgba(255,255,255,.03), rgba(255,255,255,.03) 10px, transparent 10px, transparent 20px);
+  color: var(--text);
+  opacity: .8;
+}
+.ad-choices {
+  margin-top: 4px;
+  background: none;
+  border: 0;
+  color: var(--text-dim);
+  opacity: .6;
+  font-size: 11px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.ad-choices:hover, .ad-choices:focus-visible { opacity: 1; }
+
+/* Consent notice: floats above the bottom dock so it never covers a game */
+.ad-consent {
+  position: fixed;
+  left: 50%;
+  bottom: 96px;
+  transform: translateX(-50%);
+  z-index: 9000;
+  width: min(560px, calc(100vw - 24px));
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+  align-items: center;
+  padding: 12px 16px;
+  border-radius: 14px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  box-shadow: 0 10px 34px rgba(0,0,0,.5);
+  font-size: .9rem;
+}
+.ad-consent-text { flex: 1 1 260px; margin: 0; line-height: 1.4; }
+.ad-consent-text a { color: var(--accent2); }
+.ad-consent button, .mimi-ad-btn, .ads-reward-btn {
+  padding: 9px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel-light);
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.ad-consent-yes { background: var(--accent) !important; border-color: transparent !important; color: #fff !important; }
+.ad-consent button:hover, .mimi-ad-btn:hover, .ads-reward-btn:hover:not(:disabled) { filter: brightness(1.12); }
+
+/* Demo video ad */
+.mimi-ad-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  background: rgba(0,0,0,.82);
+}
+.mimi-ad-card {
+  width: min(520px, calc(100vw - 24px));
+  padding: 14px;
+  border-radius: 16px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  outline: none;
+}
+.mimi-ad-label { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim); opacity: .7; margin-bottom: 8px; }
+.mimi-ad-canvas { display: block; width: 100%; height: auto; border-radius: 10px; background: #000; }
+.mimi-ad-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; min-height: 40px; }
+.mimi-ad-status { color: var(--text); font-weight: 600; }
+
+/* "Watch a video, get keys" in the keys panel */
+.keys-ad { margin: 14px 0; }
+.ads-reward-btn { width: 100%; background: linear-gradient(135deg, #1b6e3a, #2a9d58); border-color: transparent; color: #fff; }
+.ads-reward-btn:disabled { opacity: .55; cursor: default; }
+.ads-reward-note { margin: 8px 0 0; font-size: .78rem; opacity: .65; line-height: 1.4; }

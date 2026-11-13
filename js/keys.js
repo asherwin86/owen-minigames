@@ -263,6 +263,7 @@
               ? `\u2705 Claimed today \u2014 come back tomorrow for ${p.reward} more.`
               : `${p.played} of ${p.target} games played today.`}</p>
           </div>
+          <div class="keys-ad"></div>
           <p class="keys-note">Spend keys in <strong>Rival Arena</strong> to open crates and unlock weapon skins. More games will take them later.</p>
           <div class="keys-board">
             <p class="keys-quest-title">\u{1F3C6} Top key holders</p>
@@ -279,6 +280,8 @@
 
     renderBoard(overlay.querySelector(".keys-board-body"));
     renderDevTools(overlay.querySelector(".keys-dev"), overlay);
+    // only does anything when the server has ads switched on and the visitor said yes (js/ads.js)
+    window.MimiAds?.mountReward?.(overlay.querySelector(".keys-ad"));
   }
 
   /* The board is the hub's ordinary leaderboard system read back under the

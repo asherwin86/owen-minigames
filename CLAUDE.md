@@ -326,8 +326,26 @@ A native C port for the Nintendo Wii (devkitPPC + libogc), requested 2026-10-23.
   (healthy, served and blocked paths, account written to the volume as the unprivileged user and surviving a container replacement), and
   only then pushes to `ghcr.io/asherwin86/owen-minigames` (`latest` from `main`, `X.Y.Z` from `v*` tags, `sha-…`). Its `paths:` filter
   lists the files that end up in the image: keep it in step with the Dockerfile's `COPY` lines. `docker-compose.ghcr.yml` pulls it.
+- **TLS and the domain are the host's job** (its own reverse proxy), deliberately not in this repo. A proxy must pass WebSocket upgrades on
+  `/mp`, keep `Host`, and overwrite `X-Forwarded-For`. Exposing the app to the internet makes the "Still open" items in section 7 reachable
+  by strangers; the README says so. `rpInfoFromRequest` (passkeys), the page viewer and the sitemap take their scheme from `requestProto()`, which honours
+  `X-Forwarded-Proto` (fixed 2026-11-13; tested with a faked proxy header, not against a real browser passkey ceremony), so the proxy must set it.
 - **Verification status:** there was no Docker daemon on the dev box (no sudo, rootless Docker needs `newuidmap`), so the image itself
   was never built. What was checked instead: the exact file set the `COPY` lines produce, a clean `npm ci --omit=dev`, running
   `node server.js` from that tree with the container's environment (served and blocked paths, the healthcheck command, WebSocket,
   account creation surviving a restart, clean `SIGTERM`), and that the compose file parses. Build it before trusting it.
+
+## 12. Ads (added 2026-11-13)
+
+`js/ads.js` + `css/ads.css` + `privacy.html`, configured by `MIMI_ADS_*` / `MIMI_ADSENSE_*` env vars (table in the README's "Ads"). The server
+parses them once into `ADS_CONFIG` (`server.js`), serves it at `/api/ads-config`, and serves `/ads.txt` only for the `adsense` provider.
+
+- **Off by default, and inert when off:** the client fetches the config, and if the provider is `off` (or `MIMI_STATIC_MODE`) it adds nothing to the page.
+  The desktop app and GitHub Pages copy therefore show no ads. Keep it that way; the Docker image is the same image with or without ads.
+- **Consent gates every network request.** Don't add an ad-network script, pixel or font to `index.html`; `loadAdsense` injects it after "Show ads".
+- **Never during play.** The video ad hangs off the `mimi:gameclose` event; don't move it to game start or mid-game. Rewards go through
+  `MimiKeys.add()`, capped per day in localStorage (cosmetic currency, same trust level as the rest of `keys.js`).
+- **Verified:** server side and all three browser flows (off / `demo` / `adsense` with the Google hosts faked and `adBreak` stubbed) with Playwright.
+  **Not verified against live AdSense**: attribute names and `adBreak` types are from memory of Google's docs. Check them with a real account
+  (test mode: `MIMI_ADS_TEST=1`) before relying on it. The EEA/UK certified-CMP requirement is the site owner's, not handled here.
 

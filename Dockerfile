@@ -41,7 +41,7 @@ WORKDIR /app
 RUN mkdir -p /var/lib/mimi && chown node:node /var/lib/mimi
 
 COPY --from=deps --chown=node:node /app/node_modules ./node_modules
-COPY --chown=node:node package.json server.js index.html sw.js manifest.webmanifest robots.txt LICENSE ./
+COPY --chown=node:node package.json server.js index.html sw.js manifest.webmanifest robots.txt privacy.html LICENSE ./
 COPY --chown=node:node .well-known ./.well-known
 COPY --chown=node:node icons ./icons
 COPY --chown=node:node css ./css
