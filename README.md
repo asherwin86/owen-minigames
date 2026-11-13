@@ -258,9 +258,26 @@ Any proxy works if it forwards WebSocket upgrades on `/mp` (nginx needs `proxy_h
 headers; Caddy and Traefik do this by themselves). When the proxy runs on the same machine, publish the port only to it with
 `ports: ["127.0.0.1:1764:1764"]`.
 
-**Keep it on your LAN or VPN.** The multiplayer relay has no login and the per-address rate limits trust the first
-`X-Forwarded-For` entry, so don't expose it directly to the internet (see "Still open" in `CLAUDE.md`). Don't mount TLS
-certificates into `/app/certs` either: that makes the server open a second plain-HTTP port that serves everything.
+**Exposing it to the internet.** The multiplayer relay has no login by design (a room code is the key), so it is limited instead:
+messages are capped at 2 MiB and rate-limited per connection, a socket can be in one room at a time, one address can hold 60 sockets and 10
+rooms (500 rooms in all), wrong room codes and wrong presence logins are limited per address, only a room's host can mirror its screen in
+Play Together, and what guests receive is stripped of anything that can run code. Those numbers are for a household or a school behind one
+address; `MIMI_WS_MAX_CONNS_PER_IP`, `MIMI_WS_MAX_ROOMS_PER_IP` and `MIMI_WS_MAX_ROOMS` change them.
+
+Three things are yours to set when you publish it:
+
+1. **`MIMI_TRUSTED_PROXY_HOPS`** (default `1`): how many reverse proxies sit in front of the container. The per-address limits use the
+   `X-Forwarded-For` entry that many places from the *right*, because everything to the left of it was written by the visitor. `1` is right
+   for one proxy (Caddy, nginx, Traefik, Render); `2` for e.g. Cloudflare in front of your proxy; **`0` when nothing is in front** (the
+   header is then ignored completely, because anyone can send it).
+2. **`MIMI_DEV_SIGNUP_HASH`.** Dev accounts get the Admin panel, and the built-in dev password's hash is in this repository's public history.
+   Either switch dev sign-up off with `MIMI_DEV_SIGNUP_HASH=off`, or set your own password's hash:
+   `printf 'mimiProfile:dev-gate:YOUR-PASSWORD' | sha256sum`. Do one of the two.
+3. **HTTPS, by your proxy** (see below). Don't mount certificates into `/app/certs`: the server then also opens a plain-HTTP port next to the
+   HTTPS one. It serves only the desktop app's update feed and the `/mp` relay unless `MIMI_PLAIN_HTTP_FULL=1`, but a container doesn't need it.
+
+Passwords and passkeys: a profile's password hash is what the browser sends to prove who it is, so over plain HTTP anyone on the path can
+replay it. Use HTTPS for anything that isn't your own LAN.
 
 | Setting (env var or `.env` next to `docker-compose.yml`) | Meaning |
 |---|---|
@@ -268,6 +285,10 @@ certificates into `/app/certs` either: that makes the server open a second plain
 | `RESEND_API_KEY`, `EMAIL_FROM` | Optional: email notifications and recovery codes |
 | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Optional: mirror the data to Redis (not needed at home) |
 | `MIMI_ADS_*`, `MIMI_ADSENSE_*` | Optional: ads, **off by default**. See "Ads" below |
+| `MIMI_TRUSTED_PROXY_HOPS` | Reverse proxies in front of the container (default `1`; `0` if none). See "Exposing it to the internet" |
+| `MIMI_DEV_SIGNUP_HASH` | `off` to disable dev sign-up, or the SHA-256 of your own dev password. Set one on a public server |
+| `MIMI_WS_MAX_CONNS_PER_IP`, `MIMI_WS_MAX_ROOMS_PER_IP`, `MIMI_WS_MAX_ROOMS` | Multiplayer limits (defaults 60, 10 and 500) |
+| `MIMI_PLAIN_HTTP_FULL` | `1` serves the whole site on the extra plain-HTTP port that exists only when certificates are mounted (default: update feed only) |
 
 **Using your own domain.** TLS and the domain belong to whatever reverse proxy your lab already runs (Caddy, Traefik, Nginx Proxy Manager,
 a Cloudflare tunnel, ...), so none of that is in this repo. Point the proxy at the container's port 1764 and make sure it:
@@ -276,16 +297,16 @@ a Cloudflare tunnel, ...), so none of that is in this repo. Point the proxy at t
 - passes WebSocket upgrades on `/mp` (the multiplayer relay),
 - keeps the original `Host` header (passkeys are tied to the hostname),
 - sets `X-Forwarded-For` to the real client address, replacing any value the client sent (Caddy and Traefik do; with nginx use
-  `proxy_set_header X-Forwarded-For $remote_addr;`).
+  `proxy_set_header X-Forwarded-For $remote_addr;`) and sets `X-Forwarded-Proto: https`, which passkeys need,
+- and tell the server how many proxies there are with `MIMI_TRUSTED_PROXY_HOPS` (default 1).
 
 Accounts and passkeys are per address: someone who signed up on the Render site has no account on yours, and a passkey made on one name
 doesn't work on the other. The page still declares the Render address as its canonical URL (`index.html`, `robots.txt`); change those
 if your name should be the main one.
 
-**Publishing to the internet is a bigger step than running it at home.** The known weak spots in `CLAUDE.md` ("Still open") become
-reachable by strangers: the multiplayer relay has no login or size limits, the login rate limit can be sidestepped by forging a
-forwarded-address header unless the proxy in front overwrites it, and room data from one player is rendered as HTML in the other
-players' pages. Use it with people you trust until those are fixed.
+**What is still not solved.** A profile's password hash is the credential and travels with every request, so HTTPS is essential. Accounts have no
+email verification, and the limits above are per process and kept in memory (a restart resets them). The "Still open" list in `CLAUDE.md`
+is the current record.
 
 Raspberry Pi or another ARM box: `docker buildx build --platform linux/arm64 -t owen-minigames --load .` (or `linux/amd64,linux/arm64` with
 `--push` to a registry). The Download App buttons look up the newest GitHub release from inside the container, so they need outbound

@@ -5,6 +5,7 @@
 #   RESEND_API_KEY=re_...             optional: email notifications / recovery codes
 #   EMAIL_FROM="Mimi Games <games@example.com>"
 #   UPSTASH_REDIS_REST_URL=... UPSTASH_REDIS_REST_TOKEN=...   optional: mirror data to Redis (a local volume is enough at home)
+#   MIMI_TRUSTED_PROXY_HOPS=1         reverse proxies in front (0 if none); MIMI_DEV_SIGNUP_HASH=off to disable dev sign-up. Set both when public.
 #   MIMI_ADS_PROVIDER=adsense|demo    optional: ads (off by default). See "Ads" in the README for the rest of the MIMI_ADS* settings.
 services:
   mimi-games:
@@ -31,6 +32,11 @@ services:
       MIMI_ADS_MIN_SECONDS: ${MIMI_ADS_MIN_SECONDS:-}
       MIMI_ADS_REWARD_KEYS: ${MIMI_ADS_REWARD_KEYS:-}
       MIMI_ADS_REWARD_DAILY_MAX: ${MIMI_ADS_REWARD_DAILY_MAX:-}
+      MIMI_TRUSTED_PROXY_HOPS: ${MIMI_TRUSTED_PROXY_HOPS:-}
+      MIMI_DEV_SIGNUP_HASH: ${MIMI_DEV_SIGNUP_HASH:-}
+      MIMI_WS_MAX_CONNS_PER_IP: ${MIMI_WS_MAX_CONNS_PER_IP:-}
+      MIMI_WS_MAX_ROOMS_PER_IP: ${MIMI_WS_MAX_ROOMS_PER_IP:-}
+      MIMI_WS_MAX_ROOMS: ${MIMI_WS_MAX_ROOMS:-}
     # The server needs no privileges: it writes only to the volume and listens on a high port.
     security_opt:
       - no-new-privileges:true

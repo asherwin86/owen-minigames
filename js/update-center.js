@@ -6,6 +6,12 @@
     {
       date: "2026-11-13",
       entries: [
+        { emoji: "\u{1F6E1}\uFE0F", time: "14:00", title: "Safer multiplayer for a public server", desc: "Before the site is put on its own web address, the multiplayer relay was tightened. A single malformed message could stop the whole server; it now ignores it. Messages have a size limit and a speed limit, one connection can be in only one room at a time (leaving a room properly removes you from it), and there are limits on how many rooms and connections one address can open and on guessing room codes. In Play Together only the host's screen is shown to everyone else, and what guests receive is cleaned of anything that could run code on their page. Names and chat are length-limited. The server now works out your address correctly behind a proxy so the limits can't be dodged, the extra plain-HTTP port serves only the app's update feed, and dev sign-up can be switched off or given its own password." },
+      ],
+    },
+    {
+      date: "2026-11-13",
+      entries: [
         { emoji: "\u{1F4FA}", time: "12:00", title: "Optional ads, and a video-for-keys button (off unless the site owner turns them on)", desc: "A server can now show ads, and by default none do. When switched on, you are asked first (Show ads or No thanks) and nothing is loaded from an ad network until you say yes; the ads are child-directed and non-personalised, and Ad choices under the banner takes your answer back. There is a banner under the game list, a short video after you close a game (never while you are playing), and a new Watch a short video button in the Keys panel that gives keys, a few times a day. A new privacy page explains what is stored. Also fixed: passkeys on a server behind an HTTPS reverse proxy were being checked against an http address and refused; the server now uses the address you actually used." },
       ],
     },

@@ -205,25 +205,46 @@ The same hole served `/server.js` (including `DEV_SIGNUP_PASSWORD_HASH`) and
 `/certs/key.pem`, and `/server.js` was confirmed readable on the deployed site.
 Now an allowlist, checked after resolution.
 
-### Still open, in rough priority order
+### Fixed 2026-11-13 — the relay, relayed HTML, the mirror, the forwarded address, the dev gate
 
-- **The WebSocket relay is unauthenticated and unlimited.** `checkRateLimit`
-  only guards `/api/`. Over `/mp`: `presence-hello` validates a `passwordHash`
-  with no limiter (bypassing the strict 15/min budget), `host` can create
-  unbounded rooms, and `state`/`chat` are relayed unvalidated with no
-  `maxPayload`.
-- **A socket can join a second room without leaving the first.** `host`, `join`
-  and `matchmake` all reassign `joinedRoom` without removing the client from its
-  previous room, and `close` cleans only the current one — so the old room keeps
-  a phantom player forever and is never swept. Factor out a
-  `leaveCurrentRoom()`.
-- **The plain-HTTP mirror exposes everything**, not just the update feed:
-  `requestHandler` is mounted whole on `PORT+1` whenever TLS is on.
-- **Relayed HTML is injected into the hub's own origin** —
-  `js/play-together.js` does `gameStage.innerHTML = pt.html` on room data.
-  `<img onerror=…>` runs, with access to the `localStorage` holding the session.
-  Host-only should be enforced server-side.
-- **The dev gate is one shared unsalted SHA-256**, checked at signup only.
+Each of these was reproduced against the old server first, then fixed and tested (a Node `ws` script for the relay and the HTTP side,
+Playwright for the browser side; none of it is in the repo, there is still no test suite).
+
+- **One `null` frame stopped the whole server.** `JSON.parse("null")` is valid and `msg.type` on it throws out of the `message` handler,
+  which nothing caught. Worse, once `maxPayload` was set, an oversized frame made `ws` emit `error` on the socket and with no listener Node
+  exited: the cap itself would have been a remote kill switch. Both are fenced now (`ws.on("error")`, object check, try/catch around `handle`).
+  Keep a no-op `error` listener on every socket you create.
+- **The relay is limited, not authenticated** (a room code is the only key, by design): 2 MiB per message, a token bucket per socket for
+  messages and for bytes (over budget is dropped, a persistent offender is closed with 1008), 60 sockets / 10 rooms per address and 500 rooms
+  in all (`MIMI_WS_*`), wrong `presence-hello` credentials limited per address (only *failures* count, so a school behind one router can't lock
+  itself out), wrong room codes limited per address (a code is 4 characters), a 30 s ping so half-open sockets don't keep phantom players,
+  and `broadcast` skips peers that aren't reading. Names, colours and chat are rebuilt server-side as bounded strings; `chat` is no longer
+  relayed as the sender's raw object.
+- **One room per socket:** `host`/`join`/`matchmake` call `leaveCurrentRoom()` first, and so does `close`.
+- **Only the host's screen is mirrored.** `state` messages carrying a `pt` are dropped unless `pt.kind` is `input`/`key` or the sender opened
+  the room (`roomOwners`); `raceStart` needs the room's host. Matchmade rooms use `roomMeta.hostId`.
+- **Guests never `innerHTML` relayed markup.** `sanitizeStageHtml()` in `js/play-together.js` parses into an inert document, removes
+  script/iframe/object/embed/link/meta/base/SVG animation, every `on*` attribute, and any URL that leaves the page, then *moves* the nodes in.
+  Verified with the original code as a control: `<img onerror>` ran (`window.__pwned`) and four requests reached the attacker's host; with
+  the fix, none. If a game's mirrored markup looks wrong for a guest, check this filter before blaming the relay.
+- **`X-Forwarded-For`: believe the right end, not the left.** `clientIp()` takes the entry `MIMI_TRUSTED_PROXY_HOPS` places from the right
+  (default 1; the host-finder registry already did this and was verified live), and ignores the header when it's 0. Anything to its left is
+  client-written. The host registry now calls `clientIp()` too.
+- **The plain-HTTP mirror (`PORT+1`, only exists when certs are present) serves the update feed and `/mp` only**, unless
+  `MIMI_PLAIN_HTTP_FULL=1` (tunnels). The packaged desktop app and the Docker image have no certs, so they never open it.
+- **The dev gate** compares in constant time and can be replaced or switched off with `MIMI_DEV_SIGNUP_HASH` (`off`, or a SHA-256 of
+  `mimiProfile:dev-gate:<password>`).
+
+### Still open
+
+- **The default dev-signup hash is in the public history** and is an unsalted SHA-256. A public deployment must set `MIMI_DEV_SIGNUP_HASH`
+  (the README says so); nothing forces it. Changing the default would lock the owner out of making dev accounts, so it is left to them.
+- **A profile's `passwordHash` is the credential** and is sent with every request (and in `presence-hello`), so it is a replayable secret
+  on any plain-HTTP path. HTTPS is the only protection. A real fix is a session token, which touches every client call.
+- **Anyone with a room code can drive the host's game** in Play Together (their clicks and keys are replayed on the host's page). That is the
+  feature; the code is the only key, and a 4-character code with the limits above is guessable by a determined person over time.
+- **Limits are per process and in memory** (reset on restart, not shared between instances), and per address, so a botnet gets one budget each.
+- `saveProfilesToDisk` and the other weak spots in section 8 are reliability, not security, but they're what a hostile signup flood hits.
 
 ### Accepted, not bugs
 
@@ -327,8 +348,8 @@ A native C port for the Nintendo Wii (devkitPPC + libogc), requested 2026-10-23.
   only then pushes to `ghcr.io/asherwin86/owen-minigames` (`latest` from `main`, `X.Y.Z` from `v*` tags, `sha-…`). Its `paths:` filter
   lists the files that end up in the image: keep it in step with the Dockerfile's `COPY` lines. `docker-compose.ghcr.yml` pulls it.
 - **TLS and the domain are the host's job** (its own reverse proxy), deliberately not in this repo. A proxy must pass WebSocket upgrades on
-  `/mp`, keep `Host`, and overwrite `X-Forwarded-For`. Exposing the app to the internet makes the "Still open" items in section 7 reachable
-  by strangers; the README says so. `rpInfoFromRequest` (passkeys), the page viewer and the sitemap take their scheme from `requestProto()`, which honours
+  `/mp`, keep `Host`, and overwrite `X-Forwarded-For`. The "Still open" list in section 7 is what is left for strangers to reach; the README's "Exposing it to the internet" says what the owner must set
+  (`MIMI_TRUSTED_PROXY_HOPS`, `MIMI_DEV_SIGNUP_HASH`). `rpInfoFromRequest` (passkeys), the page viewer and the sitemap take their scheme from `requestProto()`, which honours
   `X-Forwarded-Proto` (fixed 2026-11-13; tested with a faked proxy header, not against a real browser passkey ceremony), so the proxy must set it.
 - **Verification status:** there was no Docker daemon on the dev box (no sudo, rootless Docker needs `newuidmap`), so the image itself
   was never built. What was checked instead: the exact file set the `COPY` lines produce, a clean `npm ci --omit=dev`, running

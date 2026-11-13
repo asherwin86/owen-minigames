@@ -250,6 +250,58 @@
     menuView.classList.remove("hidden");
   }
 
+  // --- guest: never trust the mirrored markup ---
+  // The host's stage HTML arrives over the relay and used to go straight into
+  // `gameStage.innerHTML`, which runs on the hub's own origin, where the signed-in
+  // session lives in localStorage. `<img src=x onerror=...>` was enough to run
+  // anything. The server now accepts it only from the room's host, but a host is
+  // just whoever opened the room, so the guest cleans it as well. The markup is
+  // parsed into an inert document (scripts and handlers do not run there), stripped
+  // of everything that can run code or fetch from elsewhere, and only then moved
+  // into the page. Nodes are moved, not re-serialised, so the browser cannot
+  // re-parse the cleaned markup into something different.
+  const BLOCKED_TAGS = new Set(["script", "iframe", "frame", "frameset", "object", "embed", "applet", "base", "meta", "link", "noscript", "template", "portal", "set", "animate", "animatetransform", "animatemotion", "foreignobject", "audio", "video", "source", "track"]);
+  const URL_ATTRS = new Set(["href", "src", "xlink:href", "poster", "data", "background", "cite", "longdesc", "usemap", "action", "formaction", "srcset", "ping"]);
+  const MAX_SNAPSHOT_CHARS = 1500000;
+
+  // A URL is only allowed if it stays on this page: a fragment, a relative path, or a small data: image (not SVG).
+  function safeUrl(value) {
+    const v = String(value).replace(/[\u0000- \u007f-\u009f]+/g, "").toLowerCase();
+    if (v === "" || v.startsWith("#")) return true;
+    if (/^data:image\/(png|jpe?g|gif|webp);/.test(v)) return true;
+    if (v.startsWith("//") || v.startsWith("\\")) return false;
+    return !/^[a-z][a-z0-9+.-]*:/.test(v);
+  }
+
+  function cleanCss(css) {
+    return String(css)
+      .replace(/@import[^;]*;?/gi, "")
+      .replace(/expression\s*\(/gi, "(")
+      .replace(/-moz-binding|behavior\s*:/gi, "x-blocked")
+      .replace(/url\(\s*(['"]?)(.*?)\1\s*\)/gi, (m, q, u) => (safeUrl(u) ? m : "none"));
+  }
+
+  function sanitizeStageHtml(html) {
+    const text = typeof html === "string" ? html : "";
+    if (!text || text.length > MAX_SNAPSHOT_CHARS) return [];
+    const doc = new DOMParser().parseFromString("<!doctype html><body>" + text, "text/html");
+    const walk = (parent) => {
+      Array.from(parent.children).forEach((el) => {
+        if (BLOCKED_TAGS.has(el.localName.toLowerCase())) { el.remove(); return; }
+        Array.from(el.attributes).forEach((attr) => {
+          const name = attr.name.toLowerCase();
+          if (name.startsWith("on") || name === "srcdoc" || name === "is") el.removeAttribute(attr.name);
+          else if (URL_ATTRS.has(name)) { if (!safeUrl(attr.value)) el.removeAttribute(attr.name); }
+          else if (name === "style") el.setAttribute(attr.name, cleanCss(attr.value));
+        });
+        if (el.localName.toLowerCase() === "style") el.textContent = cleanCss(el.textContent);
+        walk(el);
+      });
+    };
+    walk(doc.body);
+    return Array.from(doc.body.childNodes);
+  }
+
   function applySnapshot(pt) {
     if (pt.kind === "native") {
       gameTitle.textContent = "🔴 LIVE — " + (pt.title || "Kart Circuit");
@@ -260,7 +312,9 @@
       gameTitle.textContent = pt.title ? "🔴 LIVE — " + pt.title : "🔴 LIVE — host is picking a game…";
       gameStatus.textContent = pt.status || "";
       if (pt.howTo) howTo.textContent = pt.howTo;
-      gameStage.innerHTML = pt.html || "<p style='color:var(--text-dim)'>Waiting for the host to open a game…</p>";
+      const nodes = sanitizeStageHtml(pt.html);
+      if (nodes.length) gameStage.replaceChildren(...nodes);
+      else gameStage.innerHTML = "<p style='color:var(--text-dim)'>Waiting for the host to open a game…</p>";
       guestFrames.forEach((data, index) => paintFrame(index, data));
       return;
     }
@@ -273,6 +327,7 @@
   function paintFrame(index, data) {
     const canvas = gameStage.querySelectorAll("canvas")[index];
     if (!canvas) return;
+    if (typeof data !== "string" || !/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(data)) return;
     const img = new Image();
     img.onload = () => {
       const cctx = canvas.getContext("2d");

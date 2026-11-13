@@ -22,6 +22,18 @@ const {
 
 const PORT = process.env.PORT || 1764;
 const ROOT = __dirname;
+// Limits on the multiplayer relay (/mp). It has no login by design (a room code is the only key), so the limits are what stop one
+// stranger from filling the server. The numbers sit well above what Play Together and Kart Circuit send: a Play Together host mirrors
+// a canvas as a JPEG every 150 ms, and Kart sends a small state message a few dozen times a second.
+const WS_MAX_PAYLOAD = 2 * 1024 * 1024;                         // one message; the ws default is 100 MiB
+const WS_MSG_BURST = 300, WS_MSG_PER_SEC = 150;                 // messages a socket may send
+const WS_BYTES_BURST = 6 * 1024 * 1024, WS_BYTES_PER_SEC = 3 * 1024 * 1024;
+const WS_MAX_BUFFERED = 4 * 1024 * 1024;                        // stop feeding a peer that isn't reading
+const WS_MAX_CONNS_PER_IP = intEnv("MIMI_WS_MAX_CONNS_PER_IP", 60, 1, 5000);   // a school or family sits behind one address
+const WS_MAX_ROOMS_PER_IP = intEnv("MIMI_WS_MAX_ROOMS_PER_IP", 10, 1, 500);
+const WS_MAX_ROOMS_TOTAL = intEnv("MIMI_WS_MAX_ROOMS", 500, 1, 100000);
+const RATE_LIMIT_PRESENCE_FAIL = { windowMs: 60_000, max: 15 }; // wrong presence-hello credentials, per address
+const RATE_LIMIT_JOIN_FAIL = { windowMs: 60_000, max: 30 };      // joins of a room that does not exist, per address: a room code is only 4 characters
 const ROOM_MAX_PLAYERS = 20; // Gun Game Arena supports team sizes up to 10v10
 // Public matchmaking (Kart Circuit's Play Online). Distinct from ROOM_MAX_PLAYERS
 // because a matchmade race fills itself — 12 is a grid people actually want to
@@ -427,6 +439,20 @@ let profiles = {}; // { [key]: { name, passwordHash, dev, settings, updatedAt, c
 // "dev-gate" key in place of a per-profile one, so the real password is
 // never sent or stored in the clear.
 const DEV_SIGNUP_PASSWORD_HASH = "dd2a0d8da7d9cc17405586af3658ec7e3196ae67e93c1974f8674c574ab0c303";
+// That built-in hash is in the public git history and is a bare SHA-256, so anyone can try guesses against it offline. That is fine on a
+// home network and not fine on a public domain, so a deployment can replace it or switch dev sign-up off (dev accounts get the Admin
+// panel). MIMI_DEV_SIGNUP_HASH=off disables it; otherwise a 64-hex value replaces the built-in hash. How to make one is in the README.
+const DEV_SIGNUP_ENV = String(process.env.MIMI_DEV_SIGNUP_HASH || "").trim().toLowerCase();
+const DEV_SIGNUP_DISABLED = DEV_SIGNUP_ENV === "off";
+const DEV_SIGNUP_HASH = /^[0-9a-f]{64}$/.test(DEV_SIGNUP_ENV) ? DEV_SIGNUP_ENV : DEV_SIGNUP_PASSWORD_HASH;
+if (DEV_SIGNUP_DISABLED) console.log("Dev sign-up is switched off (MIMI_DEV_SIGNUP_HASH=off).");
+else if (DEV_SIGNUP_HASH !== DEV_SIGNUP_PASSWORD_HASH) console.log("Dev sign-up uses the hash from MIMI_DEV_SIGNUP_HASH.");
+// Compares without leaking, through timing, how much of a guess was right.
+function safeEqual(a, b) {
+  const ha = crypto.createHash("sha256").update(String(a)).digest();
+  const hb = crypto.createHash("sha256").update(String(b)).digest();
+  return crypto.timingSafeEqual(ha, hb);
+}
 // avatar is a small data: URI (client resizes/compresses to ~96px before
 // upload) — capped well under the request body limit below so one oversized
 // image can't bloat data/profiles.json or the request itself.
@@ -960,35 +986,51 @@ setInterval(() => {
 }, 5 * 60_000).unref();
 
 // Render (and most real hosts) put the app behind a reverse proxy, so the
-// socket's own remoteAddress is the proxy's internal IP, not the client's —
-// x-forwarded-for is the standard way that's actually communicated. Trusted
-// here because this app has no other reason to expose itself directly
-// (dev/LAN use terminates locally, hosted use is expected to sit behind
-// exactly one trusted proxy) — a header any client could otherwise spoof to
-// dodge its own limit.
+// socket's own remoteAddress is the proxy's address, not the client's, and the
+// client's comes in x-forwarded-for. That header is a list: every proxy appends
+// the address it saw to whatever it was handed, and a client can send the
+// header itself, so the *first* entry is whatever the client wrote and the
+// limiter keyed on it could be dodged by sending a different one each time.
+// Only entries added by proxies we run can be believed, and those are at the
+// end: with N trusted proxies in front, the address is the Nth from the right.
+// MIMI_TRUSTED_PROXY_HOPS is N: 1 (the default) for Render or one reverse
+// proxy, 2 for e.g. Cloudflare in front of your own proxy, and 0 when nothing
+// is in front (a LAN box or a bare container), where the header is ignored
+// completely because anyone can send it. The host-finder's registry already
+// relied on "last entry" and was verified against the live site that way.
+const TRUSTED_PROXY_HOPS = intEnv("MIMI_TRUSTED_PROXY_HOPS", 1, 0, 5);
 function clientIp(req) {
   const forwarded = req.headers["x-forwarded-for"];
-  if (typeof forwarded === "string" && forwarded.trim()) return forwarded.split(",")[0].trim();
-  return req.socket.remoteAddress || "unknown";
+  if (TRUSTED_PROXY_HOPS > 0 && typeof forwarded === "string") {
+    const parts = forwarded.split(",").map((p) => p.trim()).filter(Boolean);
+    if (parts.length) return parts[Math.max(0, parts.length - TRUSTED_PROXY_HOPS)].replace(/^::ffff:/, "");
+  }
+  return (req.socket.remoteAddress || "unknown").replace(/^::ffff:/, "");
+}
+
+// Fixed-window counters, shared by the HTTP limiter below and the WebSocket
+// relay (which has no response object to send a 429 on).
+function rateBlocked(key, tier) {
+  const entry = rateLimitBuckets.get(key);
+  return Boolean(entry && entry.resetAt > Date.now() && entry.count >= tier.max);
+}
+function rateRecord(key, tier) {
+  const now = Date.now();
+  const entry = rateLimitBuckets.get(key);
+  if (!entry || entry.resetAt <= now) rateLimitBuckets.set(key, { count: 1, resetAt: now + tier.windowMs });
+  else entry.count += 1;
 }
 
 // Returns true and records the hit if this IP is still under `tier`'s
 // limit; returns false (and sends 429 itself) once it isn't. Call sites
 // just need to `if (!checkRateLimit(...)) return;` right after routing.
 function checkRateLimit(req, res, tierName, tier) {
-  const ip = clientIp(req);
-  const key = `${tierName}:${ip}`;
-  const now = Date.now();
-  const entry = rateLimitBuckets.get(key);
-  if (!entry || entry.resetAt <= now) {
-    rateLimitBuckets.set(key, { count: 1, resetAt: now + tier.windowMs });
-    return true;
-  }
-  if (entry.count >= tier.max) {
+  const key = `${tierName}:${clientIp(req)}`;
+  if (rateBlocked(key, tier)) {
     sendJson(res, 429, { ok: false, msg: "Too many requests — try again in a minute." });
     return false;
   }
-  entry.count += 1;
+  rateRecord(key, tier);
   return true;
 }
 
@@ -1042,7 +1084,7 @@ async function handleProfilesApi(req, res, action) {
     }
     const wantsDev = Boolean(body.dev);
     const devPasswordHash = typeof body.devPasswordHash === "string" ? body.devPasswordHash : "";
-    if (wantsDev && devPasswordHash !== DEV_SIGNUP_PASSWORD_HASH) {
+    if (wantsDev && (DEV_SIGNUP_DISABLED || !safeEqual(devPasswordHash, DEV_SIGNUP_HASH))) {
       sendJson(res, 200, { ok: false, msg: "Wrong dev password." });
       return;
     }
@@ -2376,9 +2418,7 @@ function lanBlocked(req) {
 const hostRegistry = new Map();
 
 function registryKey(req) {
-  const forwarded = req.headers["x-forwarded-for"];
-  let ip = typeof forwarded === "string" && forwarded.trim() ? forwarded.split(",").pop().trim() : (req.socket.remoteAddress || "");
-  return ip.replace(/^::ffff:/, "");
+  return clientIp(req);
 }
 
 function isLoopbackRequest(req) {
@@ -2486,7 +2526,7 @@ async function handleHostApi(req, res, action) {
  *   MIMI_ADS_REWARD_KEYS       5                                keys for watching a rewarded video
  *   MIMI_ADS_REWARD_DAILY_MAX  5                                rewarded videos per person per day
  */
-function adsIntEnv(name, fallback, min, max) {
+function intEnv(name, fallback, min, max) {
   const n = Number.parseInt(process.env[name] || "", 10);
   return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
 }
@@ -2507,10 +2547,10 @@ const ADS_CONFIG = (() => {
     bannerSlot: provider === "adsense" ? bannerSlot : "",
     childDirected: process.env.MIMI_ADS_CHILD_DIRECTED !== "0",
     test: process.env.MIMI_ADS_TEST === "1",
-    every: adsIntEnv("MIMI_ADS_EVERY", 3, 1, 50),
-    minSeconds: adsIntEnv("MIMI_ADS_MIN_SECONDS", 180, 1, 3600),
-    rewardKeys: adsIntEnv("MIMI_ADS_REWARD_KEYS", 5, 1, 100),
-    rewardDailyMax: adsIntEnv("MIMI_ADS_REWARD_DAILY_MAX", 5, 1, 50),
+    every: intEnv("MIMI_ADS_EVERY", 3, 1, 50),
+    minSeconds: intEnv("MIMI_ADS_MIN_SECONDS", 180, 1, 3600),
+    rewardKeys: intEnv("MIMI_ADS_REWARD_KEYS", 5, 1, 100),
+    rewardDailyMax: intEnv("MIMI_ADS_REWARD_DAILY_MAX", 5, 1, 50),
   };
   if (provider !== "off") console.log(`Ads: ${provider}${cfg.test ? " (test mode)" : ""}, child-directed treatment ${cfg.childDirected ? "ON" : "OFF"}.`);
   return cfg;
@@ -2619,7 +2659,7 @@ function requestHandler(req, res) {
 const server = hasCert
   ? https.createServer({ cert: fs.readFileSync(CERT_PATH), key: fs.readFileSync(KEY_PATH) }, requestHandler)
   : http.createServer(requestHandler);
-const wss = new WebSocketServer({ server, path: "/mp" });
+const wss = new WebSocketServer({ server, path: "/mp", maxPayload: WS_MAX_PAYLOAD });
 // ws's own constructor (given an external `server`) attaches its own
 // 'error' listener to that server and re-emits it here on `wss` — so a
 // listen failure (e.g. EADDRINUSE) fires ws's forwarding listener first
@@ -2776,32 +2816,147 @@ function broadcast(room, payload, exceptId) {
   const data = JSON.stringify(payload);
   room.forEach((peer, id) => {
     if (id === exceptId) return;
-    if (peer.ws.readyState === peer.ws.OPEN) peer.ws.send(data);
+    if (peer.ws.readyState === peer.ws.OPEN && peer.ws.bufferedAmount < WS_MAX_BUFFERED) peer.ws.send(data);
   });
 }
 
 let nextClientId = 1;
 
+// Who opened a room with `host` (Play Together's host: the one whose screen is mirrored), and from which address, for the per-address cap.
+const roomOwners = new Map();   // roomCode -> clientId
+const roomCreators = new Map(); // roomCode -> ip
+const wsConnsByIp = new Map();  // ip -> open sockets
+
+// Everything below arrives from a stranger's browser and is relayed to other people, so it is clamped to a plain bounded string.
+function cleanText(value, max, fallback, stripAngle) {
+  if (typeof value !== "string") return fallback;
+  let t = value.replace(/[\u0000-\u001f\u007f]/g, "");
+  if (stripAngle) t = t.replace(/[<>]/g, "");
+  t = t.trim().slice(0, max);
+  return t || fallback;
+}
+function cleanColor(value, fallback) {
+  return typeof value === "string" && /^#[0-9a-fA-F]{3,8}$/.test(value) ? value : fallback;
+}
+function makePlayer(ws, msg, fallbackName, fallbackColor) {
+  return {
+    ws,
+    name: cleanText(msg.name, 24, fallbackName, true),
+    color: cleanColor(msg.color, fallbackColor),
+    avatar: sanitizeAvatar(msg.avatar),
+    profileKey: typeof msg.profileKey === "string" ? msg.profileKey.slice(0, 64) : null,
+  };
+}
+function roomsOpenedBy(ip) {
+  let n = 0;
+  for (const creator of roomCreators.values()) if (creator === ip) n += 1;
+  return n;
+}
+
 wss.on("connection", (ws, req) => {
+  // A malformed or oversized frame makes ws emit 'error' on the socket, and with no listener Node treats that as uncaught and exits:
+  // one bad packet from anyone was enough to stop the whole server. ws closes the socket itself (1009, 1002...); nothing to do here.
+  ws.on("error", () => {});
   if (req && lanBlocked(req)) { ws.close(1013, "Hosting is turned off"); return; }
+  const ip = req ? clientIp(req) : "unknown";
+  const openFromIp = wsConnsByIp.get(ip) || 0;
+  if (openFromIp >= WS_MAX_CONNS_PER_IP) { ws.close(1013, "Too many connections"); return; }
+  wsConnsByIp.set(ip, openFromIp + 1);
+
   const clientId = String(nextClientId++);
   let joinedRoom = null;
   let roomCode = null;
   let presenceKey = null;
+  let presenceHellos = 0;
 
-  ws.on("message", (raw) => {
-    let msg;
-    try {
-      msg = JSON.parse(raw);
-    } catch (e) {
+  // Per-socket budget (messages and bytes). Over budget a message is dropped; a socket that keeps hammering is closed.
+  let msgTokens = WS_MSG_BURST, byteTokens = WS_BYTES_BURST, lastRefill = Date.now(), strikes = 0;
+  function withinBudget(size) {
+    const now = Date.now();
+    const dt = (now - lastRefill) / 1000;
+    lastRefill = now;
+    msgTokens = Math.min(WS_MSG_BURST, msgTokens + dt * WS_MSG_PER_SEC);
+    byteTokens = Math.min(WS_BYTES_BURST, byteTokens + dt * WS_BYTES_PER_SEC);
+    if (msgTokens < 1 || byteTokens < size) {
+      if (++strikes > 300) ws.close(1008, "Too much traffic");
+      return false;
+    }
+    msgTokens -= 1;
+    byteTokens -= size;
+    if (strikes > 0) strikes -= 1;
+    return true;
+  }
+
+  // A half-open connection (laptop lid shut, Wi-Fi gone) never sends `close`, which would leave a phantom player in its room forever.
+  let alive = true;
+  ws.on("pong", () => { alive = true; });
+  const heartbeat = setInterval(() => {
+    if (!alive) { ws.terminate(); return; }
+    alive = false;
+    try { ws.ping(); } catch (e) { /* closing */ }
+  }, 30_000);
+
+  // One socket is in at most one room. `host`, `join` and `matchmake` all go through this first, so switching rooms never leaves a
+  // phantom player behind in the old one (before, only the *current* room was cleaned on close and the old one was never swept).
+  function leaveCurrentRoom() {
+    const room = joinedRoom;
+    const code = roomCode;
+    joinedRoom = null;
+    roomCode = null;
+    if (!room || !code) return;
+    room.delete(clientId);
+    broadcast(room, { type: "playerLeft", id: clientId }, clientId);
+    if (room.size === 0) {
+      rooms.delete(code);
+      roomMeta.delete(code);
+      roomOwners.delete(code);
+      roomCreators.delete(code);
       return;
     }
+    const meta = roomMeta.get(code);
+    if (!meta) return;
+    // A matchmade room is full of strangers, so it can't be left leaderless the
+    // way a room shared by code can — somebody has to own the track choice and
+    // send the raceStart. The longest-present remaining racer takes over.
+    if (meta.hostId === clientId) {
+      const nextHostId = Array.from(room.keys()).sort((x, y) => Number(x) - Number(y))[0];
+      meta.hostId = nextHostId;
+      const nextHost = room.get(nextHostId);
+      if (nextHost && nextHost.ws.readyState === nextHost.ws.OPEN) {
+        nextHost.ws.send(JSON.stringify({ type: "hostPromoted", room: code }));
+      }
+    }
+    broadcastMatchStatus(code);
+  }
 
+  function roomCapReached() {
+    return rooms.size >= WS_MAX_ROOMS_TOTAL || roomsOpenedBy(ip) >= WS_MAX_ROOMS_PER_IP;
+  }
+
+  // Is this client allowed to speak for the room (start the race, mirror the screen)? Matchmade rooms track their host in roomMeta,
+  // code rooms by whoever opened them. If that person has gone, a code room has no owner and anyone may (as before).
+  function isRoomOwner(strict) {
+    const meta = roomMeta.get(roomCode);
+    const owner = meta ? meta.hostId : roomOwners.get(roomCode);
+    if (!owner) return !strict;
+    if (!strict && !joinedRoom.has(owner)) return true;
+    return owner === clientId;
+  }
+
+  function handle(msg) {
     if (msg.type === "presence-hello") {
+      // Checks a credential, so it is limited like the HTTP login is, but only *wrong* guesses count against the address: a school full
+      // of signed-in kids behind one router must not lock itself out just by connecting.
+      if (presenceKey || ++presenceHellos > 5) return;
+      const failKey = `presence-fail:${ip}`;
+      if (rateBlocked(failKey, RATE_LIMIT_PRESENCE_FAIL)) return;
       const pKey = typeof msg.key === "string" ? msg.key.trim().toLowerCase() : "";
       const pHash = typeof msg.passwordHash === "string" ? msg.passwordHash : "";
-      const pEntry = profiles[pKey];
-      if (!pEntry || pEntry.passwordHash !== pHash) return; // silently ignore — not a real error the caller needs to see
+      const pEntry = Object.prototype.hasOwnProperty.call(profiles, pKey) ? profiles[pKey] : null;
+      if (!pEntry || !safeEqual(pEntry.passwordHash, pHash)) {
+        rateRecord(failKey, RATE_LIMIT_PRESENCE_FAIL);
+        return; // silently ignore — not a real error the caller needs to see
+      }
       presenceKey = pKey;
       if (!presenceByKey.has(pKey)) presenceByKey.set(pKey, new Set());
       presenceByKey.get(pKey).add(ws);
@@ -2809,10 +2964,18 @@ wss.on("connection", (ws, req) => {
     }
 
     if (msg.type === "host") {
+      leaveCurrentRoom();
+      if (roomCapReached()) {
+        ws.send(JSON.stringify({ type: "joinError", reason: "The server has too many rooms open right now. Try again in a bit." }));
+        return;
+      }
       roomCode = makeRoomCode();
       joinedRoom = new Map();
       rooms.set(roomCode, joinedRoom);
-      joinedRoom.set(clientId, { ws, name: msg.name || "Player", color: msg.color || "#ffd166", avatar: sanitizeAvatar(msg.avatar), profileKey: typeof msg.profileKey === "string" ? msg.profileKey : null });
+      roomOwners.set(roomCode, clientId);
+      roomCreators.set(roomCode, ip);
+      const player = makePlayer(ws, msg, "Player", "#ffd166");
+      joinedRoom.set(clientId, player);
       ws.send(JSON.stringify({ type: "joined", id: clientId, room: roomCode, isHost: true, players: roomPlayerList(joinedRoom) }));
       return;
     }
@@ -2822,16 +2985,15 @@ wss.on("connection", (ws, req) => {
       // isn't a suitable one yet. Either branch replies with exactly the same
       // `joined` message host/join send, so the client needs no separate
       // "I matchmade" code path — it's in a room, same as always.
+      leaveCurrentRoom();
       const scope = msg.scope === "regional" ? "regional" : "global";
       const region = sanitizeRegion(msg.region);
       const existing = findOpenMatchRoom(scope, region);
-      const player = {
-        ws,
-        name: msg.name || "Racer",
-        color: msg.color || "#53e0ff",
-        avatar: sanitizeAvatar(msg.avatar),
-        profileKey: typeof msg.profileKey === "string" ? msg.profileKey : null,
-      };
+      if (!existing && roomCapReached()) {
+        ws.send(JSON.stringify({ type: "joinError", reason: "The server has too many rooms open right now. Try again in a bit." }));
+        return;
+      }
+      const player = makePlayer(ws, msg, "Racer", "#53e0ff");
 
       if (existing) {
         joinedRoom = existing.room;
@@ -2846,6 +3008,7 @@ wss.on("connection", (ws, req) => {
         roomCode = makeRoomCode();
         joinedRoom = new Map();
         rooms.set(roomCode, joinedRoom);
+        roomCreators.set(roomCode, ip);
         roomMeta.set(roomCode, { scope, region, open: true, countdown: null, hostId: clientId });
         joinedRoom.set(clientId, player);
         ws.send(JSON.stringify({ type: "joined", id: clientId, room: roomCode, isHost: true, matchmade: true, players: roomPlayerList(joinedRoom) }));
@@ -2863,34 +3026,49 @@ wss.on("connection", (ws, req) => {
     }
 
     if (msg.type === "join") {
-      const code = String(msg.room || "").toUpperCase();
+      const code = String(msg.room || "").toUpperCase().slice(0, 8);
       const room = rooms.get(code);
-      if (!room) {
-        ws.send(JSON.stringify({ type: "joinError", reason: "Room not found." }));
+      const joinFailKey = `join-fail:${ip}`;
+      const scanning = rateBlocked(joinFailKey, RATE_LIMIT_JOIN_FAIL);
+      if (!room || scanning) {
+        // Wrong codes are counted per address, and once over the limit even a right code is refused: otherwise the 1M possible codes
+        // could be scanned for other people's rooms.
+        if (!room && !scanning) rateRecord(joinFailKey, RATE_LIMIT_JOIN_FAIL);
+        ws.send(JSON.stringify({ type: "joinError", reason: scanning ? "Too many wrong room codes. Wait a minute and try again." : "Room not found." }));
         return;
       }
+      if (room === joinedRoom) return; // already in it
       if (room.size >= ROOM_MAX_PLAYERS) {
         ws.send(JSON.stringify({ type: "joinError", reason: "Room is full." }));
         return;
       }
+      leaveCurrentRoom();
       joinedRoom = room;
       roomCode = code;
-      const avatar = sanitizeAvatar(msg.avatar);
-      room.set(clientId, { ws, name: msg.name || "Player", color: msg.color || "#53e0ff", avatar, profileKey: typeof msg.profileKey === "string" ? msg.profileKey : null });
+      const player = makePlayer(ws, msg, "Player", "#53e0ff");
+      room.set(clientId, player);
       ws.send(JSON.stringify({ type: "joined", id: clientId, room: roomCode, isHost: false, players: roomPlayerList(room) }));
-      broadcast(room, { type: "playerJoined", id: clientId, name: msg.name || "Player", color: msg.color || "#53e0ff", avatar }, clientId);
+      broadcast(room, { type: "playerJoined", id: clientId, name: player.name, color: player.color, avatar: player.avatar }, clientId);
       return;
     }
 
     if (!joinedRoom) return;
 
     if (msg.type === "state") {
+      // Play Together: only the host's screen is mirrored. A guest may send its clicks and keys to the host and nothing else; the
+      // mirrored `html` is put on every other player's page, so it must never be accepted from anyone but the host.
+      if (msg.pt !== undefined) {
+        const pt = msg.pt;
+        if (!pt || typeof pt !== "object") return;
+        if (pt.kind !== "input" && pt.kind !== "key" && !isRoomOwner(true)) return;
+      }
       msg.id = clientId;
       broadcast(joinedRoom, msg, clientId);
       return;
     }
 
     if (msg.type === "raceStart") {
+      if (!isRoomOwner(false)) return;
       // Close the room to matchmaking the moment its race begins — otherwise
       // the next player to search would be dropped onto a track mid-lap.
       const meta = roomMeta.get(roomCode);
@@ -2904,8 +3082,9 @@ wss.on("connection", (ws, req) => {
     }
 
     if (msg.type === "chat") {
-      msg.id = clientId;
-      broadcast(joinedRoom, msg, clientId);
+      const text = cleanText(msg.text, 200, "", false);
+      if (!text) return;
+      broadcast(joinedRoom, { type: "chat", id: clientId, text, name: cleanText(msg.name, 24, "Racer", true), dev: msg.dev === true }, clientId);
       return;
     }
 
@@ -2917,36 +3096,37 @@ wss.on("connection", (ws, req) => {
       }
       return;
     }
+  }
+
+  ws.on("message", (raw, isBinary) => {
+    const size = typeof raw === "string" ? raw.length : raw.byteLength;
+    if (!withinBudget(size) || isBinary) return;
+    let msg;
+    try {
+      msg = JSON.parse(raw);
+    } catch (e) {
+      return;
+    }
+    // `null`, a number or an array is valid JSON and has no `.type`: reading it used to throw out of this handler and take the whole
+    // server down. Nothing a client sends may be able to do that, so the handler is also fenced.
+    if (!msg || typeof msg !== "object" || Array.isArray(msg)) return;
+    try {
+      handle(msg);
+    } catch (e) {
+      console.error("Relay message error:", e && e.message);
+    }
   });
 
   ws.on("close", () => {
+    clearInterval(heartbeat);
+    const left = (wsConnsByIp.get(ip) || 1) - 1;
+    if (left > 0) wsConnsByIp.set(ip, left); else wsConnsByIp.delete(ip);
     if (presenceKey && presenceByKey.has(presenceKey)) {
       const set = presenceByKey.get(presenceKey);
       set.delete(ws);
       if (set.size === 0) presenceByKey.delete(presenceKey);
     }
-    if (!joinedRoom || !roomCode) return;
-    joinedRoom.delete(clientId);
-    broadcast(joinedRoom, { type: "playerLeft", id: clientId }, clientId);
-    if (joinedRoom.size === 0) {
-      rooms.delete(roomCode);
-      roomMeta.delete(roomCode);
-      return;
-    }
-    const meta = roomMeta.get(roomCode);
-    if (!meta) return;
-    // A matchmade room is full of strangers, so it can't be left leaderless the
-    // way a room shared by code can — somebody has to own the track choice and
-    // send the raceStart. The longest-present remaining racer takes over.
-    if (meta.hostId === clientId) {
-      const nextHostId = Array.from(joinedRoom.keys()).sort((a, b) => Number(a) - Number(b))[0];
-      meta.hostId = nextHostId;
-      const nextHost = joinedRoom.get(nextHostId);
-      if (nextHost && nextHost.ws.readyState === nextHost.ws.OPEN) {
-        nextHost.ws.send(JSON.stringify({ type: "hostPromoted", room: roomCode }));
-      }
-    }
-    broadcastMatchStatus(roomCode);
+    leaveCurrentRoom();
   });
 });
 
@@ -3057,8 +3237,17 @@ bootstrapData().then(() => {
   // so there's no separate relay logic to keep in sync.
   if (hasCert) {
     const UPDATE_FEED_HTTP_PORT = Number(PORT) + 1;
-    const updateFeedServer = http.createServer(requestHandler);
-    const updateFeedWss = new WebSocketServer({ server: updateFeedServer, path: "/mp" });
+    // Only the update feed is served here unless the owner opts in. This port is plain HTTP, so everything on it (logins included)
+    // crosses the network unencrypted, and it used to be the whole site. A tunnel that needs the full site over plain HTTP can set
+    // MIMI_PLAIN_HTTP_FULL=1.
+    const mirrorHandler = process.env.MIMI_PLAIN_HTTP_FULL === "1" ? requestHandler : (req, res) => {
+      const p = String(req.url || "").split("?")[0];
+      if ((req.method === "GET" || req.method === "HEAD") && p.startsWith("/downloads/updates/")) return requestHandler(req, res);
+      res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+      res.end("Not found");
+    };
+    const updateFeedServer = http.createServer(mirrorHandler);
+    const updateFeedWss = new WebSocketServer({ server: updateFeedServer, path: "/mp", maxPayload: WS_MAX_PAYLOAD });
     updateFeedWss.on("error", () => {});
     updateFeedWss.on("connection", (ws, req) => wss.emit("connection", ws, req));
     updateFeedServer.listen(UPDATE_FEED_HTTP_PORT, () => {
